@@ -16,19 +16,34 @@
 #define _FILTERINGENGINE_H_
 
 NTSTATUS StartFilterEngine(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT32 *calloutID,
+	_In_ UINT64 *activeFilter,
 	_Inout_ WDFDEVICE *device
 	);
 NTSTATUS UnregisterCallouts();
-VOID StopFilterEngine();
+VOID StopFilterEngine(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT32 *calloutID,
+	_In_ UINT64 *activeFilter
+	);
 NTSTATUS RegisterCallout(
 	_Inout_ void* deviceObject,
+	_In_ HANDLE engineHandle,
 	_Out_ UINT32* calloutId
 	);
 NTSTATUS RegisterFilter(
-	_Inout_ void* deviceObject,
-	_In_ FILTER_IP_RANGE *ipRange,
+	_Inout_ WDFDEVICE* deviceObject,
+	_In_ KKDRV_FILTER_DATA *ipRange,
+	_In_ HANDLE engineHandle,
+	_Inout_ UINT64 *activeFilter,
 	_Out_ UINT32* calloutId
 	);
-NTSTATUS RestartEngine();
+NTSTATUS RestartEngine(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT32 *calloutID,
+	_In_ UINT64 *activeFilter,
+	_Inout_ WDFDEVICE *device
+	);
 
 #endif // !_FILTERINGENGINE_H_

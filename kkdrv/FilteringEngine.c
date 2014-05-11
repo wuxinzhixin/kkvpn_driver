@@ -14,6 +14,9 @@
 #include "Callout.h"
 
 NTSTATUS StartFilterEngine(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT32 *calloutID,
+	_In_ UINT64 *activeFilter,
 	_Inout_ WDFDEVICE *device
 	)
 {
@@ -30,7 +33,7 @@ NTSTATUS StartFilterEngine(
 		RPC_C_AUTHN_WINNT,
 		NULL,
 		&session,
-		&gEngineHandle
+		engineHandle
 		);
 	if (!NT_SUCCESS(status))
 	{
@@ -40,7 +43,7 @@ NTSTATUS StartFilterEngine(
 	engineOpened = TRUE;
 	DbgPrint(_DRVNAME "Filter Engine opened\n");
 
-	status = FwpmTransactionBegin(gEngineHandle, 0);
+	status = FwpmTransactionBegin(*engineHandle, 0);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmTransactionBegin, status);
@@ -53,7 +56,8 @@ NTSTATUS StartFilterEngine(
 
 	status = RegisterCallout(
 		device,
-		&gCalloutID
+		*engineHandle,
+		calloutID
 		);
 	if (!NT_SUCCESS(status))
 	{
@@ -62,9 +66,9 @@ NTSTATUS StartFilterEngine(
 	}
 	DbgPrint(_DRVNAME "Callout registered\n");
 
-	gActiveFilter = 0;
+	*activeFilter = 0;
 
-	status = FwpmTransactionCommit(gEngineHandle);
+	status = FwpmTransactionCommit(*engineHandle);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmTransactionCommit, status);
@@ -79,37 +83,49 @@ Exit:
 	{
 		if (transactionStarted)
 		{
-			FwpmTransactionAbort(gEngineHandle);
+			FwpmTransactionAbort(*engineHandle);
 		}
 
 		if (engineOpened)
 		{
-			FwpmEngineClose(gEngineHandle);
-			gEngineHandle = NULL;
+			FwpmEngineClose(*engineHandle);
+			*engineHandle = NULL;
 		}
 	}
 
 	return status;
 }
 
-VOID StopFilterEngine()
+VOID StopFilterEngine(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT32 *calloutID,
+	_In_ UINT64 *activeFilter
+	)
 {
-	if (gCalloutID)
-		FwpsCalloutUnregisterById(gCalloutID);
-
-	if (gActiveFilter)
-		FwpmFilterDeleteById(gEngineHandle, gActiveFilter);
-
-	if (gEngineHandle)
+	if (*calloutID)
 	{
-		FwpmEngineClose(gEngineHandle);
-		gEngineHandle = NULL;
+		FwpsCalloutUnregisterById(*calloutID);
+		*calloutID = 0;
+	}
+		
+
+	if (*activeFilter)
+	{
+		FwpmFilterDeleteById(*engineHandle, *activeFilter);
+		*activeFilter = 0;
+	}
+
+	if (*engineHandle)
+	{
+		FwpmEngineClose(*engineHandle);
+		*engineHandle = NULL;
 	}
 }
 
 NTSTATUS
 RegisterCallout(
-	_Inout_ WDFDEVICE* deviceObject,
+	_Inout_ void* deviceObject,
+	_In_ HANDLE engineHandle,
 	_Out_ UINT32* calloutId
 	)
 {
@@ -142,13 +158,13 @@ RegisterCallout(
 	mCallout.calloutKey = GUID_KKDRV_CALLOUT;
 	mCallout.displayData = displayData;
 	mCallout.applicableLayer = FWPM_LAYER_INBOUND_IPPACKET_V4;
-	status = FwpmCalloutAdd(
-		gEngineHandle,
+
+	status = FwpmCalloutAdd0(
+		engineHandle,
 		&mCallout,
 		NULL,
 		NULL
 		);
-
 	if (!NT_SUCCESS(status))
 	{
 		goto Exit;
@@ -169,16 +185,18 @@ Exit:
 NTSTATUS
 RegisterFilter(
 	_Inout_ WDFDEVICE* deviceObject,
-	_In_ FILTER_IP_RANGE *ipRange,
+	_In_ KKDRV_FILTER_DATA *ipRange,
+	_In_ HANDLE engineHandle,
+	_Inout_ UINT64 *activeFilter,
 	_Out_ UINT32* calloutId
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 
 	FWPM_FILTER filterInbound = { 0 };
-	FWPM_FILTER filterOutbound = { 0 };
+	//FWPM_FILTER filterOutbound = { 0 };
 	FWPM_FILTER_CONDITION filterInboundCondition[1] = { 0 };
-	FWPM_FILTER_CONDITION filterOutboundCondition[1] = { 0 };
+	//FWPM_FILTER_CONDITION filterOutboundCondition[1] = { 0 };
 	FWP_RANGE filterConditionRange = { 0 };
 
 	BOOL transactionStarted = FALSE;
@@ -192,7 +210,7 @@ RegisterFilter(
 	filterConditionRange.valueHigh.type = FWP_UINT32;
 	filterConditionRange.valueHigh.uint32 = (UINT32)(ipRange->high);
 
-	status = FwpmTransactionBegin(gEngineHandle, 0);
+	status = FwpmTransactionBegin(engineHandle, 0);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmTransactionBegin, status);
@@ -200,9 +218,9 @@ RegisterFilter(
 	}
 	transactionStarted = TRUE;
 
-	if (gActiveFilter)
+	if (*activeFilter)
 	{
-		FwpmFilterDeleteById(gEngineHandle, gActiveFilter);
+		FwpmFilterDeleteById(engineHandle, *activeFilter);
 		if (!NT_SUCCESS(status))
 		{
 			REPORT_ERROR(FwpmFilterDeleteById, status);
@@ -227,7 +245,7 @@ RegisterFilter(
 	filterInboundCondition[0].conditionValue.type = FWP_RANGE_TYPE;
 	filterInboundCondition[0].conditionValue.rangeValue = &filterConditionRange;
 
-	filterOutbound.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
+	/*filterOutbound.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
 	filterOutbound.displayData.name = L"kkdrv IPv4 Outbound Filter";
 	filterOutbound.displayData.description = L"Filter that checks for packets addressed inside\
 											   VPN subnetwork.";
@@ -243,20 +261,20 @@ RegisterFilter(
 	filterOutboundCondition[0].fieldKey = FWPM_CONDITION_IP_LOCAL_ADDRESS;
 	filterOutboundCondition[0].matchType = FWP_MATCH_RANGE;
 	filterOutboundCondition[0].conditionValue.type = FWP_RANGE_TYPE;
-	filterOutboundCondition[0].conditionValue.rangeValue = &filterConditionRange;
+	filterOutboundCondition[0].conditionValue.rangeValue = &filterConditionRange;*/
 
 	status = FwpmFilterAdd(
-		gEngineHandle,
+		engineHandle,
 		&filterInbound,
 		NULL,
-		&gActiveFilter);
+		activeFilter);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmFilterAdd(inbound), status);
 		goto Exit;
 	}
 
-	status = FwpmFilterAdd(
+	/*status = FwpmFilterAdd(
 		gEngineHandle,
 		&filterOutbound,
 		NULL,
@@ -265,11 +283,11 @@ RegisterFilter(
 	{
 		REPORT_ERROR(FwpmFilterAdd(outbound), status);
 		goto Exit;
-	}
+	}*/
 
-	DbgPrint(_DRVNAME "Filter ID: 0x%x.\n", gActiveFilter);
+	DbgPrint(_DRVNAME "Filter ID: 0x%x.\n", *activeFilter);
 
-	status = FwpmTransactionCommit(gEngineHandle);
+	status = FwpmTransactionCommit(engineHandle);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmTransactionCommit, status);
@@ -281,20 +299,34 @@ Exit:
 
 	if (transactionStarted)
 	{
-		FwpmTransactionAbort(gEngineHandle);
+		FwpmTransactionAbort(engineHandle);
 	}
 
 	return status;
 }
 
 NTSTATUS
-RestartEngine()
+RestartEngine(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT32 *calloutID,
+	_In_ UINT64 *activeFilter,
+	_Inout_ WDFDEVICE *device
+	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 
-	StopFilterEngine();
+	StopFilterEngine(
+		engineHandle,
+		calloutID,
+		activeFilter
+		);
 
-	StartFilterEngine(&gDevice);
+	StartFilterEngine(
+		engineHandle,
+		calloutID,
+		activeFilter,
+		device
+		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(StartFilterEngine, status);

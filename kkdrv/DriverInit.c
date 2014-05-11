@@ -10,6 +10,8 @@ SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
 L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
 );
 
+
+
 VOID
 kkVPNUnload(
 	_In_ PDRIVER_OBJECT pDriverObject
@@ -17,7 +19,11 @@ kkVPNUnload(
 {
 	UNREFERENCED_PARAMETER(pDriverObject);
 
-	StopFilterEngine();
+	StopFilterEngine(
+		&gEngineHandle,
+		&gCalloutID,
+		&gActiveFilter
+		);
 
 	DbgPrint(_DRVNAME "Unloaded\n");
 }
@@ -110,7 +116,12 @@ kkdrvDriverDeviceAdd(
 	WdfControlFinishInitializing(gDevice);
 	DbgPrint(_DRVNAME "Device initialization finished\n");
 
-	status = StartFilterEngine(&gDevice);
+	status = StartFilterEngine(
+		&gEngineHandle,
+		&gCalloutID,
+		&gActiveFilter,
+		&gDevice
+		);
 
 Exit:
 	return status;
@@ -160,7 +171,7 @@ VOID kkdrvIoDeviceControl(
 	UNREFERENCED_PARAMETER(InputBufferLength);
 
 	NTSTATUS status = STATUS_SUCCESS;
-	FILTER_IP_RANGE *buf = NULL;
+	KKDRV_FILTER_DATA *data = NULL;
 	size_t bytes_read = 0;
 
 	switch (IoControlCode) 
@@ -168,8 +179,8 @@ VOID kkdrvIoDeviceControl(
 		case IOCTL_REGISTER:
 			status = WdfRequestRetrieveInputBuffer(
 				Request,
-				sizeof(FILTER_IP_RANGE),
-				(void*) &buf,
+				1, //sizeof(KKDRV_FILTER_DATA),
+				(void*)&data,
 				&bytes_read
 				);
 			if (!NT_SUCCESS(status))
@@ -178,14 +189,24 @@ VOID kkdrvIoDeviceControl(
 				goto Complete;
 			}
 
-			DbgPrint(_DRVNAME "Device I/O Control recieved (low: 0x%08x, high: 0x%08x)\n", 
-				buf->low,
-				buf->high
+			DbgPrint(_DRVNAME "Device I/O Control recieved (low: 0x%08x, high: 0x%08x, event: 0x%08x)\n", 
+				data->low,
+				data->high,
+				data->event
 				);
 
+			ObReferenceObjectByHandle(
+				data->event,
+				0, NULL,
+				UserMode,
+				&gPacketEvent,
+				NULL
+				);
 			status = RegisterFilter(
-				gDevice,
-				buf,
+				&gDevice,
+				data,
+				gEngineHandle,
+				&gActiveFilter,
 				&gCalloutID
 				);
 			if (!NT_SUCCESS(status))
@@ -193,15 +214,21 @@ VOID kkdrvIoDeviceControl(
 				REPORT_ERROR(RegisterFilter, status);
 				goto Complete;
 			}
-
+			
 			DbgPrint(_DRVNAME "Filter registered\n");
 			break;
 
 		case IOCTL_RESTART:
-			status = RestartEngine();
+			status = RestartEngine(
+				&gEngineHandle,
+				&gCalloutID,
+				&gActiveFilter,
+				&gDevice
+				);
 
 			DbgPrint(_DRVNAME "Filter unregistered\n");
 			break;
+
 		/*case IOCTL_SET_EVENT_HANDLE:
 			status = WdfRequestRetrieveInputBuffer(
 				Request,
@@ -217,6 +244,7 @@ VOID kkdrvIoDeviceControl(
 
 			DbgPrint(_DRVNAME "Event handle received\n");
 			break;*/
+
 		default:
 			status = STATUS_INVALID_DEVICE_REQUEST;
 			DbgPrint(_DRVNAME "Device I/O Control recieved (invalid IoControlCode)\n");

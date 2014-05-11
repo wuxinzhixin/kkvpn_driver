@@ -19,7 +19,7 @@ DEFINE_GUID(GUID_KKDRV_CALLOUT,
 #define _DRVVER "0.1.0"
 #define DOS_DEVICE_NAME  L"\\DosDevices\\kkdrv"
 
-#define REPORT_ERROR(func, status) DbgPrint(_DRVNAME "Error at " #func " - status: 0x%08x.", status);
+#define REPORT_ERROR(func, status) DbgPrint(_DRVNAME "Error at " #func " - status: 0x%08x.\n", status);
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD kkdrvDriverDeviceAdd;
@@ -27,12 +27,12 @@ EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL kkdrvIoDeviceControl;
 VOID kkVPNUnload();
 NTSTATUS CreateQueue();
 
+WDFQUEUE gQueue;
 WDFDRIVER gDriver;
 WDFDEVICE gDevice;
 UINT32 gCalloutID;
-WDFQUEUE gQueue;
-UINT64 gActiveFilter;
-//HANDLE gPacketEvent;
 HANDLE gEngineHandle;
+PKEVENT gPacketEvent;
+UINT64 gActiveFilter;
 
 #endif // !_DRIVERINIT_H_

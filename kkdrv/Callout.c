@@ -31,8 +31,8 @@ void NTAPI CalloutClasifyFunction(
 	UNREFERENCED_PARAMETER(flowContext);
 	UNREFERENCED_PARAMETER(classifyOut);
 
-	//if (gPacketEvent)
-	//	KeSetEvent(gPacketEvent, 0, FALSE);
+	if (gPacketEvent)
+		KeSetEvent(gPacketEvent, IO_NO_INCREMENT, FALSE);
 
 	DbgPrint(_DRVNAME "Callout function called, event set\n");
 }
