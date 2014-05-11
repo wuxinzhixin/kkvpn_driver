@@ -1,0 +1,91 @@
+﻿;
+; kkdrv.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=VPNDrivers
+ClassGuid={C999D12D-DD37-4022-8C7F-866E27DE74F2}
+Provider=%ManufacturerName%
+CatalogFile=kkdrv.cat
+DriverVer= 0.1.0; TODO: set DriverVer in stampinf property pages
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+; ================= Class section =====================
+
+[ClassInstall32]
+Addreg=SampleClassReg
+
+[SampleClassReg]
+HKR,,,0,%ClassName%
+HKR,,Icon,,-5
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+kkdrv.sys  = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%kkdrv.DeviceDesc%=kkdrv_Device, Root\kkdrv
+
+[kkdrv_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+kkdrv.sys
+
+;-------------- Service installation
+[kkdrv_Device.NT.Services]
+AddService = kkdrv,%SPSVCINST_ASSOCSERVICE%, kkdrv_Service_Inst
+
+; -------------- kkdrv driver install sections
+[kkdrv_Service_Inst]
+DisplayName    = %kkdrv.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\kkdrv.sys
+LoadOrderGroup = Extended Base
+
+;
+;--- kkdrv_Device Coinstaller installation ------
+;
+
+[DestinationDirs]
+kkdrv_Device_CoInstaller_CopyFiles = 11
+
+[kkdrv_Device.NT.CoInstallers]
+AddReg=kkdrv_Device_CoInstaller_AddReg
+CopyFiles=kkdrv_Device_CoInstaller_CopyFiles
+
+[kkdrv_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[kkdrv_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[SourceDisksFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+[kkdrv_Device.NT.Wdf]
+KmdfService =  kkdrv, kkdrv_wdfsect
+[kkdrv_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="kkSoftware"
+ClassName="VPN Drivers"
+DiskName = "kkVPN Driver Installation Disk"
+kkdrv.DeviceDesc = "kkVPN Filter"
+kkdrv.SVCDESC = "kkVPN Service"
