@@ -142,6 +142,8 @@ CreateQueue(
 		);
 
 	ioQueueConfig.EvtIoDeviceControl = kkdrvIoDeviceControl;
+	ioQueueConfig.EvtIoRead = kkdrvIoRead;
+	ioQueueConfig.EvtIoWrite = kkdrvIoWrite;
 
 	status = WdfIoQueueCreate(
 		*hDevice,
@@ -249,6 +251,46 @@ VOID kkdrvIoDeviceControl(
 			status = STATUS_INVALID_DEVICE_REQUEST;
 			DbgPrint(_DRVNAME "Device I/O Control recieved (invalid IoControlCode)\n");
 			break;
+	}
+
+Complete:
+	WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
+}
+
+VOID kkdrvIoRead(
+	_In_  WDFQUEUE Queue,
+	_In_  WDFREQUEST Request,
+	_In_  size_t Length
+	)
+{
+	UNREFERENCED_PARAMETER(Queue);
+	UNREFERENCED_PARAMETER(Request);
+	UNREFERENCED_PARAMETER(Length);
+}
+
+VOID kkdrvIoWrite(
+	_In_  WDFQUEUE Queue,
+	_In_  WDFREQUEST Request,
+	_In_  size_t Length
+	)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PVOID data = NULL;
+	size_t bytes_read = 0;
+
+	UNREFERENCED_PARAMETER(Queue);
+	UNREFERENCED_PARAMETER(Length);
+
+	status = WdfRequestRetrieveInputBuffer(
+		Request,
+		1,
+		data,
+		&bytes_read
+		);
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(WdfRequestRetrieveInputBuffer, status);
+		goto Complete;
 	}
 
 Complete:
