@@ -12,6 +12,7 @@
 
 #include "Callout.h"
 #include "DriverInit.h"
+#include "UserModeBufferHandler.h"
 
 void NTAPI CalloutClasifyFunction(
 	_In_ const FWPS_INCOMING_VALUES0* inFixedValues,
@@ -31,10 +32,11 @@ void NTAPI CalloutClasifyFunction(
 	UNREFERENCED_PARAMETER(flowContext);
 	UNREFERENCED_PARAMETER(classifyOut);
 
-	if (gPacketEvent)
-		KeSetEvent(gPacketEvent, IO_NO_INCREMENT, FALSE);
-
-	DbgPrint(_DRVNAME "Callout function called, event set\n");
+	if (gBufferEvent)
+	{
+		KeSetEvent(gBufferEvent, IO_NO_INCREMENT, FALSE);
+	}
+		
 }
 
 NTSTATUS NTAPI CalloutNotifyFunction(

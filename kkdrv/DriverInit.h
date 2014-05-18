@@ -1,4 +1,3 @@
-//#include <ntifs.h>
 #include <ntddk.h>
 #include <wdf.h>
 #include <initguid.h>
@@ -14,27 +13,44 @@ DEFINE_GUID(GUID_KKDRV_INTERFACE,
 DEFINE_GUID(GUID_KKDRV_CALLOUT,
 	0xe6477825, 0x63a3, 0x4ae7, 0xa9, 0xa6, 0x7f, 0xc2, 0x98, 0xe3, 0x3f, 0x1a);
 
-
 #define _DRVNAME "kkVPN: "
 #define _DRVVER "0.1.0"
 #define DOS_DEVICE_NAME  L"\\DosDevices\\kkdrv"
 
 #define REPORT_ERROR(func, status) DbgPrint(_DRVNAME "Error at " #func " - status: 0x%08x.\n", status);
 
+typedef struct
+{
+	PKEVENT event;
+	PVOID driverUnloading;
+	PVOID mem;
+} 
+KKDRV_WORKER_DATA;
+
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD kkdrvDriverDeviceAdd;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL kkdrvIoDeviceControl;
 EVT_WDF_IO_QUEUE_IO_READ kkdrvIoRead;
 EVT_WDF_IO_QUEUE_IO_WRITE kkdrvIoWrite;
+EVT_WDF_OBJECT_CONTEXT_CLEANUP kkdrvCleanupCallback;
 VOID kkVPNUnload();
 NTSTATUS CreateQueue();
+NTSTATUS CreateAndMapMemory(PMDL* PMemMdl, PVOID* UserVa);
+void UnMapAndFreeMemory(PMDL PMdl, PVOID UserVa);
 
-WDFQUEUE gQueue;
-WDFDRIVER gDriver;
-WDFDEVICE gDevice;
-UINT32 gCalloutID;
-HANDLE gEngineHandle;
-PKEVENT gPacketEvent;
-UINT64 gActiveFilter;
+extern BOOLEAN gDriverStopping;
+extern KKDRV_WORKER_DATA gParams;
+
+extern PVOID gUASharedMem;
+extern PVOID gSharedMem;
+extern HANDLE gFilteringEngineHandle;
+extern HANDLE gInjectionEngineHandle;
+
+extern UINT64 gActiveFilter;
+extern UINT32 gCalloutID;
+
+extern PKEVENT gBufferEvent;
+extern PKEVENT gUserModeEvent;
+extern PMDL gMdl;
 
 #endif // !_DRIVERINIT_H_

@@ -12,17 +12,18 @@
 #include "FilteringEngine.h"
 #include "DriverInit.h"
 #include "Callout.h"
+#include "UserModeBufferHandler.h"
 
 NTSTATUS StartFilterEngine(
-	_In_ HANDLE *engineHandle,
-	_In_ UINT32 *calloutID,
-	_In_ UINT64 *activeFilter,
-	_Inout_ WDFDEVICE *device
+	_Inout_ HANDLE *engineHandle,
+	_Inout_ UINT32 *calloutID,
+	_Inout_ UINT64 *activeFilter,
+	_Inout_ WDFDEVICE device
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	BOOL engineOpened = FALSE;
-	BOOL transactionStarted = FALSE;
+	BOOLEAN engineOpened = FALSE;
+	BOOLEAN transactionStarted = FALSE;
 
 	FWPM_SESSION session = { 0 };
 	
@@ -124,7 +125,7 @@ VOID StopFilterEngine(
 
 NTSTATUS
 RegisterCallout(
-	_Inout_ void* deviceObject,
+	_Inout_ WDFDEVICE device,
 	_In_ HANDLE engineHandle,
 	_Out_ UINT32* calloutId
 	)
@@ -135,6 +136,7 @@ RegisterCallout(
 	FWPS_CALLOUT sCallout = { 0 };
 	FWPM_CALLOUT mCallout = { 0 };
 	FWPM_DISPLAY_DATA displayData = { 0 };
+	PDEVICE_OBJECT deviceObject = WdfDeviceWdmGetDeviceObject(device);
 
 	sCallout.calloutKey = GUID_KKDRV_CALLOUT;
 	sCallout.classifyFn = CalloutClasifyFunction;
@@ -159,7 +161,7 @@ RegisterCallout(
 	mCallout.displayData = displayData;
 	mCallout.applicableLayer = FWPM_LAYER_INBOUND_IPPACKET_V4;
 
-	status = FwpmCalloutAdd0(
+	status = FwpmCalloutAdd(
 		engineHandle,
 		&mCallout,
 		NULL,
@@ -199,7 +201,7 @@ RegisterFilter(
 	//FWPM_FILTER_CONDITION filterOutboundCondition[1] = { 0 };
 	FWP_RANGE filterConditionRange = { 0 };
 
-	BOOL transactionStarted = FALSE;
+	BOOLEAN transactionStarted = FALSE;
 
 	UNREFERENCED_PARAMETER(deviceObject);
 	UNREFERENCED_PARAMETER(calloutId);
@@ -275,7 +277,7 @@ RegisterFilter(
 	}
 
 	/*status = FwpmFilterAdd(
-		gEngineHandle,
+		gFilteringEngineHandle,
 		&filterOutbound,
 		NULL,
 		&gActiveFilter);
@@ -295,6 +297,8 @@ RegisterFilter(
 	}
 	transactionStarted = FALSE;
 
+	StartWorker(&gBufferEvent);
+
 Exit:
 
 	if (transactionStarted)
@@ -310,7 +314,7 @@ RestartEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
 	_In_ UINT64 *activeFilter,
-	_Inout_ WDFDEVICE *device
+	_Inout_ WDFDEVICE device
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;

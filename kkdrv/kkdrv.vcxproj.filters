@@ -33,6 +33,12 @@
     <ClCompile Include="Callout.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="InjectionEngine.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UserModeBufferHandler.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DriverInit.h">
@@ -45,6 +51,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Callout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="InjectionEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UserModeBufferHandler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

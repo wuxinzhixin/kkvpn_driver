@@ -16,10 +16,10 @@
 #define _FILTERINGENGINE_H_
 
 NTSTATUS StartFilterEngine(
-	_In_ HANDLE *engineHandle,
-	_In_ UINT32 *calloutID,
-	_In_ UINT64 *activeFilter,
-	_Inout_ WDFDEVICE *device
+	_Inout_ HANDLE *engineHandle,
+	_Inout_ UINT32 *calloutID,
+	_Inout_ UINT64 *activeFilter,
+	_Inout_ WDFDEVICE device
 	);
 NTSTATUS UnregisterCallouts();
 VOID StopFilterEngine(
@@ -43,7 +43,7 @@ NTSTATUS RestartEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
 	_In_ UINT64 *activeFilter,
-	_Inout_ WDFDEVICE *device
+	_Inout_ WDFDEVICE device
 	);
 
 #endif // !_FILTERINGENGINE_H_

@@ -25,5 +25,3 @@ NTSTATUS NTAPI CalloutNotifyFunction(
 	_In_ const GUID* filterKey,
 	_Inout_ FWPS_FILTER2* filter
 	);
-
-//void NTAPI FWPS_CALLOUT_CLASSIFY_FN2 CalloutClasifyFunction;
