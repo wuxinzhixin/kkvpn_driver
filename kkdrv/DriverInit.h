@@ -22,6 +22,7 @@ DEFINE_GUID(GUID_KKDRV_CALLOUT,
 typedef struct
 {
 	PKEVENT event;
+	PKEVENT userevent;
 	PVOID driverUnloading;
 	PVOID mem;
 } 

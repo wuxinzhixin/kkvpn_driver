@@ -215,6 +215,7 @@ VOID kkdrvIoDeviceControl(
 	KKDRV_FILTER_DATA *data = NULL;
 	PVOID uaMem = NULL;
 	size_t bytes_read = 0;
+	size_t bytes_returned = 0;
 
 	switch (IoControlCode) 
 	{
@@ -231,22 +232,8 @@ VOID kkdrvIoDeviceControl(
 				goto Complete;
 			}
 
-			status = WdfRequestRetrieveOutputBuffer(
-				Request,
-				sizeof(PVOID),							// called from 32-bit app, hence 32-bit pointer
-				&uaMem,
-				NULL
-				);
-			if (!NT_SUCCESS(status))
-			{
-				REPORT_ERROR(WdfRequestRetrieveOutputBuffer, status);
-				goto Complete;
-			}
-			uaMem = NULL;
-
-			DbgPrint(_DRVNAME "Device I/O Control recieved (event: 0x%0x, uaMem: 0x%0x)\n", 
-				data->event,
-				uaMem
+			DbgPrint(_DRVNAME "Device I/O Control recieved (event: 0x%0x)\n", 
+				data->event
 				);
 
 			UnMapAndFreeMemory(gMdl, gUASharedMem);
@@ -259,7 +246,7 @@ VOID kkdrvIoDeviceControl(
 				REPORT_ERROR(CreateAndMapMemory, status);
 				goto Complete;
 			}
-			uaMem = gUASharedMem;
+
 			gSharedMem = MmGetSystemAddressForMdlSafe(gMdl, NormalPagePriority);
 			if (!gSharedMem)
 			{
@@ -274,6 +261,11 @@ VOID kkdrvIoDeviceControl(
 				&gUserModeEvent,
 				NULL
 				);
+			if (!NT_SUCCESS(status))
+			{
+				REPORT_ERROR(ObReferenceObjectByHandle, status);
+				goto Complete;
+			}
 			status = RegisterFilter(
 				&device,
 				data,
@@ -286,6 +278,21 @@ VOID kkdrvIoDeviceControl(
 				REPORT_ERROR(RegisterFilter, status);
 				goto Complete;
 			}
+
+			status = WdfRequestRetrieveOutputBuffer(
+				Request,
+				sizeof(PVOID),							// called from 32-bit app, hence 32-bit pointer
+				&uaMem,
+				NULL
+				);
+			if (!NT_SUCCESS(status))
+			{
+				REPORT_ERROR(WdfRequestRetrieveOutputBuffer, status);
+				goto Complete;
+			}
+
+			*(PVOID*)uaMem = gUASharedMem;
+			bytes_returned = sizeof(uaMem);
 			
 			DbgPrint(_DRVNAME "Filter registered\n");
 			break;
@@ -324,7 +331,7 @@ VOID kkdrvIoDeviceControl(
 	}
 
 Complete:
-	WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
+	WdfRequestCompleteWithInformation(Request, status, bytes_returned);
 }
 
 VOID kkdrvCleanupCallback(
