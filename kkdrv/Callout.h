@@ -1,16 +1,22 @@
 #include <ntddk.h>
 #include <wdf.h>
 
-#pragma warning(push)
-#pragma warning(disable:4201)       // unnamed struct/union
+//#pragma warning(push)
+//#pragma warning(disable:4201)       // unnamed struct/union
+//
+//#include <fwpsk.h>
+//
+//#pragma warning(pop)
+//
+//#include <fwpmk.h>
 
-#include <fwpsk.h>
+#ifndef _CALLOUT_H_
+#define _CALLOUT_H_
 
-#pragma warning(pop)
+#include "DriverInit.h"
 
-#include <fwpmk.h>
-
-void NTAPI CalloutClasifyFunction(
+void NTAPI 
+CalloutClasifyFunction(
 	_In_ const FWPS_INCOMING_VALUES0* inFixedValues,
 	_In_ const FWPS_INCOMING_METADATA_VALUES0* inMetaValues,
 	_Inout_opt_ void* layerData,
@@ -20,8 +26,29 @@ void NTAPI CalloutClasifyFunction(
 	_Inout_ FWPS_CLASSIFY_OUT0* classifyOut
 	);
 
-NTSTATUS NTAPI CalloutNotifyFunction(
+NTSTATUS NTAPI 
+CalloutNotifyFunction(
 	_In_ FWPS_CALLOUT_NOTIFY_TYPE notifyType,
 	_In_ const GUID* filterKey,
 	_Inout_ FWPS_FILTER2* filter
 	);
+
+NTSTATUS 
+InsertNBL(
+	_Inout_ KKDRV_NBL_QUEUE *queue,
+	_In_ NET_BUFFER_LIST *nbl,
+	_In_ const FWPS_INCOMING_METADATA_VALUES0* inMetaValues,
+	_Out_ BOOLEAN *awake
+	);
+
+__inline NET_BUFFER_LIST* 
+TailOfNetBufferListChain(
+	_In_ NET_BUFFER_LIST* netBufferListChain
+	);
+
+__inline size_t
+GetNBLLength(
+_In_ NET_BUFFER_LIST* nbl
+);
+
+#endif // !_CALLOUT_H_

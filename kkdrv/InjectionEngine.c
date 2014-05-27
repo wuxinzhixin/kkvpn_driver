@@ -13,7 +13,8 @@
 #include "InjectionEngine.h"
 #include "DriverInit.h"
 
-NTSTATUS StartInjectionEngine(
+NTSTATUS 
+StartInjectionEngine(
 	_In_ HANDLE *engineHandle
 	)
 {
@@ -34,7 +35,8 @@ Exit:
 	return status;
 }
 
-VOID StopInjectionEngine(
+VOID 
+StopInjectionEngine(
 	_In_ HANDLE *engineHandle
 	)
 {
@@ -53,7 +55,8 @@ VOID StopInjectionEngine(
 	*engineHandle = NULL;
 }
 
-NTSTATUS InjectPacketReceive(
+NTSTATUS 
+InjectPacketReceive(
 	_In_ HANDLE *engineHandle,
 	_In_ PVOID data,
 	_In_ size_t length

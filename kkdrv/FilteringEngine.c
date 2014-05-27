@@ -14,7 +14,8 @@
 #include "Callout.h"
 #include "UserModeBufferHandler.h"
 
-NTSTATUS StartFilterEngine(
+NTSTATUS 
+StartFilterEngine(
 	_Inout_ HANDLE *engineHandle,
 	_Inout_ UINT32 *calloutID,
 	_Inout_ UINT64 *activeFilter,
@@ -97,7 +98,8 @@ Exit:
 	return status;
 }
 
-VOID StopFilterEngine(
+VOID 
+StopFilterEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
 	_In_ UINT64 *activeFilter
@@ -186,14 +188,13 @@ Exit:
 
 NTSTATUS
 RegisterFilter(
-	_Inout_ WDFDEVICE* deviceObject,
 	_In_ KKDRV_FILTER_DATA *ipRange,
 	_In_ HANDLE engineHandle,
-	_Inout_ UINT64 *activeFilter,
-	_Out_ UINT32* calloutId
+	_Inout_ UINT64 *activeFilter
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
+	//FWPM_SUBLAYER kkdrvSublayer;
 
 	FWPM_FILTER filterInbound = { 0 };
 	//FWPM_FILTER filterOutbound = { 0 };
@@ -202,9 +203,6 @@ RegisterFilter(
 	FWP_RANGE filterConditionRange = { 0 };
 
 	BOOLEAN transactionStarted = FALSE;
-
-	UNREFERENCED_PARAMETER(deviceObject);
-	UNREFERENCED_PARAMETER(calloutId);
 
 	filterConditionRange.valueLow.type = FWP_UINT32;
 	filterConditionRange.valueLow.uint32 = (UINT32)(ipRange->low);
@@ -229,6 +227,20 @@ RegisterFilter(
 			goto Exit;
 		}
 	}
+
+	/*kkdrvSublayer.subLayerKey = GUID_KKDRV_SUBLAYER;
+	kkdrvSublayer.displayData.name = L"Transport Inspect Sub-Layer";
+	kkdrvSublayer.displayData.description =
+		L"Sub-Layer for use by Transport Inspect callouts";
+	kkdrvSublayer.flags = 0;
+	kkdrvSublayer.weight = 0; 
+
+	status = FwpmSubLayerAdd(engineHandle, &kkdrvSublayer, NULL);
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(FwpmSubLayerAdd, status);
+		goto Exit;
+	}*/
 
 	filterInbound.layerKey = FWPM_LAYER_INBOUND_IPPACKET_V4;
 	filterInbound.displayData.name = L"kkdrv IPv4 Inbound Filter";

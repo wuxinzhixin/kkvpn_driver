@@ -1,23 +1,24 @@
 #include <ntddk.h>
 #include <wdf.h>
 
-//#pragma warning(push)
-//#pragma warning(disable:4201)       // unnamed struct/union
-//
-//#include <fwpsk.h>
-//
-//#pragma warning(pop)
-//
-//#include <fwpmk.h>
+#ifndef _INJECTIONENGINE_H_
+#define _INJECTIONENGINE_H_
 
-NTSTATUS StartInjectionEngine(
+NTSTATUS 
+StartInjectionEngine(
 	_In_ HANDLE *engineHandle
 	);
-VOID StopInjectionEngine(
+
+VOID 
+StopInjectionEngine(
 	_In_ HANDLE *engineHandle
 	);
-NTSTATUS InjectPacketReceive(
+
+NTSTATUS 
+InjectPacketReceive(
 	_In_ HANDLE *engineHandle,
 	_In_ PVOID data,
 	_In_ size_t length
 	);
+
+#endif // !_INJECTIONENGINE_H_
