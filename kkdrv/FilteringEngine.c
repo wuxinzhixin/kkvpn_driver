@@ -43,7 +43,6 @@ StartFilterEngine(
 		goto Exit;
 	}
 	engineOpened = TRUE;
-	DbgPrint(_DRVNAME "Filter Engine opened\n");
 
 	status = FwpmTransactionBegin(*engineHandle, 0);
 	if (!NT_SUCCESS(status))
@@ -52,7 +51,6 @@ StartFilterEngine(
 		goto Exit;
 	}
 	transactionStarted = TRUE;
-	DbgPrint(_DRVNAME "Filter transaction started\n");
 
 	//register callout
 
@@ -66,7 +64,6 @@ StartFilterEngine(
 		REPORT_ERROR(RegisterCallout, status);
 		goto Exit;
 	}
-	DbgPrint(_DRVNAME "Callout registered\n");
 
 	*activeFilter = 0;
 
@@ -77,7 +74,6 @@ StartFilterEngine(
 		goto Exit;
 	}
 	transactionStarted = FALSE;
-	DbgPrint(_DRVNAME "Filter transaction commit\n");
 
 Exit:
 
@@ -109,8 +105,7 @@ StopFilterEngine(
 	{
 		FwpsCalloutUnregisterById(*calloutID);
 		*calloutID = 0;
-	}
-		
+	}	
 
 	if (*activeFilter)
 	{
@@ -161,7 +156,7 @@ RegisterCallout(
 
 	mCallout.calloutKey = GUID_KKDRV_CALLOUT;
 	mCallout.displayData = displayData;
-	mCallout.applicableLayer = FWPM_LAYER_INBOUND_IPPACKET_V4;
+	mCallout.applicableLayer = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
 
 	status = FwpmCalloutAdd(
 		engineHandle,
@@ -194,12 +189,11 @@ RegisterFilter(
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	//FWPM_SUBLAYER kkdrvSublayer;
 
 	FWPM_FILTER filterInbound = { 0 };
-	//FWPM_FILTER filterOutbound = { 0 };
+	FWPM_FILTER filterOutbound = { 0 };
 	FWPM_FILTER_CONDITION filterInboundCondition[1] = { 0 };
-	//FWPM_FILTER_CONDITION filterOutboundCondition[1] = { 0 };
+	FWPM_FILTER_CONDITION filterOutboundCondition[1] = { 0 };
 	FWP_RANGE filterConditionRange = { 0 };
 
 	BOOLEAN transactionStarted = FALSE;
@@ -228,78 +222,73 @@ RegisterFilter(
 		}
 	}
 
-	/*kkdrvSublayer.subLayerKey = GUID_KKDRV_SUBLAYER;
-	kkdrvSublayer.displayData.name = L"Transport Inspect Sub-Layer";
-	kkdrvSublayer.displayData.description =
-		L"Sub-Layer for use by Transport Inspect callouts";
-	kkdrvSublayer.flags = 0;
-	kkdrvSublayer.weight = 0; 
+	/*	
+		Outbound Filter
+	*/
 
-	status = FwpmSubLayerAdd(engineHandle, &kkdrvSublayer, NULL);
+	RtlZeroMemory(&filterOutbound, sizeof(filterOutbound));
+	filterOutbound.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
+	filterOutbound.displayData.name = L"kkdrv IPv4 Outbound Filter";
+	filterOutbound.displayData.description = L"Filter that checks for packets addressed inside\
+											   VPN subnetwork.";
+
+	filterOutbound.action.type = FWP_ACTION_CALLOUT_TERMINATING;
+	filterOutbound.action.calloutKey = GUID_KKDRV_CALLOUT;
+	filterOutbound.filterCondition = filterOutboundCondition;
+	filterOutbound.numFilterConditions = 1;
+	filterOutbound.subLayerKey = FWPM_SUBLAYER_UNIVERSAL;
+	filterOutbound.weight.type = FWP_EMPTY;
+
+	filterOutboundCondition[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+	filterOutboundCondition[0].matchType = FWP_MATCH_RANGE;
+	filterOutboundCondition[0].conditionValue.type = FWP_RANGE_TYPE;
+	filterOutboundCondition[0].conditionValue.rangeValue = &filterConditionRange;
+
+	status = FwpmFilterAdd(
+		engineHandle,
+		&filterOutbound,
+		NULL,
+		activeFilter
+		);
 	if (!NT_SUCCESS(status))
 	{
-		REPORT_ERROR(FwpmSubLayerAdd, status);
+		REPORT_ERROR(FwpmFilterAdd(outbound), status);
 		goto Exit;
-	}*/
+	}
 
+	/*
+	Inbound Filter
+	*/
+
+	RtlZeroMemory(&filterInbound, sizeof(filterInbound));
 	filterInbound.layerKey = FWPM_LAYER_INBOUND_IPPACKET_V4;
 	filterInbound.displayData.name = L"kkdrv IPv4 Inbound Filter";
 	filterInbound.displayData.description = L"Filter that checks for packets addressed inside\
 											  VPN subnetwork.";
 
-	filterInbound.action.type = FWP_ACTION_CALLOUT_TERMINATING;
-	filterInbound.action.calloutKey = GUID_KKDRV_CALLOUT;
+	filterInbound.action.type = FWP_ACTION_PERMIT; //FWP_ACTION_BLOCK;
 	filterInbound.filterCondition = filterInboundCondition;
 	filterInbound.numFilterConditions = 1;
 	filterInbound.subLayerKey = FWPM_SUBLAYER_UNIVERSAL;
-	filterInbound.weight.type = FWP_EMPTY;
+	filterInbound.weight.type = FWP_UINT8;
+	filterInbound.weight.uint8 = 0xF;
 
 	filterInboundCondition[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
 	filterInboundCondition[0].matchType = FWP_MATCH_RANGE;
 	filterInboundCondition[0].conditionValue.type = FWP_RANGE_TYPE;
 	filterInboundCondition[0].conditionValue.rangeValue = &filterConditionRange;
 
-	/*filterOutbound.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
-	filterOutbound.displayData.name = L"kkdrv IPv4 Outbound Filter";
-	filterOutbound.displayData.description = L"Filter that checks for packets addressed inside\
-											   VPN subnetwork.";
-
-	filterOutbound.action.type = FWP_ACTION_BLOCK;
-	//filterOutbound.action.type = FWP_ACTION_CALLOUT_TERMINATING;
-	//filterOutbound.action.calloutKey = *calloutKey;
-	filterOutbound.filterCondition = filterOutboundCondition;
-	filterOutbound.numFilterConditions = 1;
-	filterOutbound.subLayerKey = FWPM_SUBLAYER_UNIVERSAL;
-	filterOutbound.weight.type = FWP_EMPTY;
-
-	filterOutboundCondition[0].fieldKey = FWPM_CONDITION_IP_LOCAL_ADDRESS;
-	filterOutboundCondition[0].matchType = FWP_MATCH_RANGE;
-	filterOutboundCondition[0].conditionValue.type = FWP_RANGE_TYPE;
-	filterOutboundCondition[0].conditionValue.rangeValue = &filterConditionRange;*/
-
 	status = FwpmFilterAdd(
 		engineHandle,
 		&filterInbound,
 		NULL,
-		activeFilter);
+		activeFilter
+		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmFilterAdd(inbound), status);
 		goto Exit;
 	}
-
-	/*status = FwpmFilterAdd(
-		gFilteringEngineHandle,
-		&filterOutbound,
-		NULL,
-		&gActiveFilter);
-	if (!NT_SUCCESS(status))
-	{
-		REPORT_ERROR(FwpmFilterAdd(outbound), status);
-		goto Exit;
-	}*/
-
-	DbgPrint(_DRVNAME "Filter ID: 0x%x.\n", *activeFilter);
 
 	status = FwpmTransactionCommit(engineHandle);
 	if (!NT_SUCCESS(status))

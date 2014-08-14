@@ -24,14 +24,11 @@ WorkerRoutine(
 	NTSTATUS status = STATUS_SUCCESS;
 	KKDRV_WORKER_DATA* threadParams = (KKDRV_WORKER_DATA*)params;
 
-	DbgPrint(_DRVNAME "Starting worker thread");
-
 	for (;;)
 	{
 		KLOCK_QUEUE_HANDLE lockHandle;
-		NET_BUFFER_LIST *nbl = NULL;
+		PKKDRV_PACKET packet = NULL;
 		size_t length = 0;
-		UINT32 flags = 0;
 		KKDRV_NET_BUFFER_FLAT *nbflat = NULL;
 
 		KeWaitForSingleObject(
@@ -53,9 +50,8 @@ WorkerRoutine(
 
 		KeAcquireInStackQueuedSpinLock(&(threadParams->queue->lock), &lockHandle);
 
-		nbl = threadParams->queue->nblHead;
+		packet = threadParams->queue->nblHead;
 		length = threadParams->queue->length;
-		flags = threadParams->queue->flags;
 
 		threadParams->queue->nblHead = NULL;
 		threadParams->queue->nblTail = NULL;
@@ -65,8 +61,10 @@ WorkerRoutine(
 
 		KeClearEvent(&threadParams->event);
 
-		if (!nbl)
+		if (!packet)
+		{
 			continue;
+		}
 
 		KeWaitForSingleObject(
 			(PKEVENT)threadParams->userevent_complete,
@@ -77,29 +75,23 @@ WorkerRoutine(
 			);
 
 		nbflat->length = (UINT32)length;
-		status = CopyNblDataToBuffer(
-			nbl,
+		status = CopyPacketDataToBuffer(
+			packet,
 			length,
-			flags,
 			&(nbflat->buffer)
 			);
 		if (!NT_SUCCESS(status))
 		{
-			REPORT_ERROR(CopyNblDataToBuffer, status);
+			REPORT_ERROR(CopyPacketDataToBuffer, status);
 			continue;
 		}
 
-		FwpsFreeCloneNetBufferList(nbl, 0);
-
-		if (threadParams->userevent_receive)
-			KeSetEvent(threadParams->userevent_receive, IO_NO_INCREMENT, FALSE);
-		else
-			DbgPrint(_DRVNAME "Usermode event empty\n");
+		KeSetEvent(threadParams->userevent_receive, IO_NO_INCREMENT, FALSE);
 
 		threadParams->queue->awake = FALSE;
 	}
 
-	DbgPrint(_DRVNAME "Exiting worker thread\n");
+	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
 NTSTATUS 
@@ -108,18 +100,7 @@ StartWorker(
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	//HANDLE sharedEvent = NULL;
-	//PKEVENT event = NULL;
 	gStoppingThread = FALSE;
-
-	/*UNICODE_STRING eventName;
-	RtlInitUnicodeString(&eventName, L"\\BaseNamedObjects\\kkdrvBufferEvent");
-	event = IoCreateNotificationEvent(&eventName, &sharedEvent);
-	if (event == NULL)
-	{
-		REPORT_ERROR(IoCreateNotificationEvent, 0);
-		return STATUS_UNSUCCESSFUL;
-	}*/
 
 	KeInitializeEvent(
 		&gParams.event,
@@ -131,11 +112,8 @@ StartWorker(
 	gParams.stoppingThread = &gStoppingThread;
 	gParams.userevent_receive = gUserModeEventReceive;
 	gParams.userevent_complete = gUserModeEventComplete;
-	//gParams.event = event;
 	gParams.mem = gSharedMem;
-	gParams.queue = &gNblQueue;
-
-	//KeClearEvent(event);
+	gParams.queue = &gPacketQueue;
 
 	status = PsCreateSystemThread(
 		&gWorkerThreadHandle,
@@ -170,6 +148,9 @@ StartWorker(
 VOID 
 StopWorker()
 {
+	if (!gWorkerThreadObj)
+		return;
+
 	KeWaitForSingleObject(
 		gWorkerThreadObj,
 		Executive,
@@ -178,96 +159,42 @@ StopWorker()
 		NULL
 		);
 
-	ObDereferenceObject(gWorkerThreadObj);
+	//ObDereferenceObject(gWorkerThreadObj);
 }
 
-NTSTATUS 
-CopyNblDataToBuffer(
-	_Inout_ NET_BUFFER_LIST *netBufferListChain,
+NTSTATUS
+CopyPacketDataToBuffer(
+	_Inout_ PKKDRV_PACKET head,
 	_In_ size_t length,
-	_In_ UINT32 flags,
 	_Out_ PVOID buffer
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 
-	UNREFERENCED_PARAMETER(netBufferListChain);
-	UNREFERENCED_PARAMETER(buffer);
-
 	if (length > (UM_BUFFER_PAGE_SIZE))
 	{
 		REPORT_ERROR(CopyNblDataToBuffer, 0);
-		return STATUS_UNSUCCESSFUL;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	FWPS_STREAM_DATA streamData;
 	size_t bytesCopied = 0;
+	PKKDRV_PACKET packet = head;
 
-	streamData.dataLength = length;
-	streamData.flags = flags;
-	streamData.netBufferListChain = netBufferListChain;
-
-	streamData.dataOffset.netBufferList = netBufferListChain;
-	streamData.dataOffset.netBuffer =
-		NET_BUFFER_LIST_FIRST_NB(streamData.dataOffset.netBufferList);
-	streamData.dataOffset.mdl =
-		NET_BUFFER_CURRENT_MDL(streamData.dataOffset.netBuffer);
-	streamData.dataOffset.mdlOffset =
-		NET_BUFFER_CURRENT_MDL_OFFSET(streamData.dataOffset.netBuffer);
-
-	FwpsCopyStreamDataToBuffer(
-			&streamData,
-			buffer,
-			length,
-			&bytesCopied
+	while (packet)
+	{
+		RtlCopyMemory(
+			(PVOID)((size_t)buffer + bytesCopied),
+			&(packet->data),
+			packet->dataLength
 			);
-	NT_ASSERT(bytesCopied == length);
-	/*DbgPrint(_DRVNAME "Bytes copied to flat buffer: 0x%08x, NBLs in chain: %d, NBs in chain: %d\n", 
-		bytesCopied, 
-		NBLsInChain(netBufferListChain),
-		NBsInChain(netBufferListChain)
-		);*/
 
+		bytesCopied += packet->dataLength;
+		
+		PKKDRV_PACKET temp = packet;
+		packet = packet->Next;
+
+		ExFreePoolWithTag(temp, KKDRV_TAG);
+	}
+	
 	return status;
-}
-
-__inline UINT32
-NBLsInChain(
-	_In_ NET_BUFFER_LIST * nbl
-	)
-{
-	UINT32 res = 0;
-	NET_BUFFER_LIST *out = nbl;
-
-	while (out)
-	{
-		out = out->Next;
-		res++;
-	}
-
-	return res;
-}
-
-__inline UINT32
-NBsInChain(
-	_In_ NET_BUFFER_LIST * nbl
-	)
-{
-	UINT32 res = 0;
-	NET_BUFFER_LIST *out = nbl;
-
-	while (out)
-	{
-		NET_BUFFER *nb = out->FirstNetBuffer;
-
-		while (nb)
-		{
-			res++;
-			nb = nb->Next;
-		}
-
-		out = out->Next;
-	}
-
-	return res;
 }

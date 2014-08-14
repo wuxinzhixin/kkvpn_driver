@@ -18,11 +18,15 @@ SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
 L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
 );
 
+//FWPM_SUBLAYER gSublayer;
+
 BOOLEAN gStoppingThread;
 KKDRV_WORKER_DATA gParams;
 
 UINT64 gActiveFilter;
 UINT32 gCalloutID;
+IF_INDEX gIfIndex;
+IF_INDEX gSubIfIndex;
 
 PKEVENT gBufferEvent;
 PKEVENT gUserModeEventReceive;
@@ -34,8 +38,10 @@ HANDLE gFilteringEngineHandle;
 HANDLE gInjectionEngineHandle;
 PVOID gUASharedMem;
 PVOID gSharedMem;
+NDIS_HANDLE gPoolHandle;
+PDEVICE_OBJECT gDeviceObject;
 
-KKDRV_NBL_QUEUE gNblQueue;
+KKDRV_PACKET_QUEUE gPacketQueue;
 
 VOID
 kkVPNUnload(
@@ -58,7 +64,7 @@ kkVPNUnload(
 		&gActiveFilter
 		);
 
-	DbgPrint(_DRVNAME "Unloaded\n");
+	NdisFreeNetBufferListPool(gPoolHandle);
 }
 
 NTSTATUS
@@ -71,8 +77,9 @@ DriverEntry(
 	WDFDRIVER driver;
 	WDF_DRIVER_CONFIG config;
 	
-	DbgPrint(_DRVNAME "Started (Version " _DRVVER ")\n");
 	WDF_DRIVER_CONFIG_INIT(&config, kkdrvDriverDeviceAdd);
+	config.DriverInitFlags = 
+
 	status = WdfDriverCreate(
 			pDriverObject, 
 			pRegistryPath, 
@@ -87,9 +94,35 @@ DriverEntry(
 		goto Exit;
 	}
 
-	KeInitializeSpinLock(&(gNblQueue.lock));
-
 	pDriverObject->DriverUnload = kkVPNUnload;
+
+	NET_BUFFER_LIST_POOL_PARAMETERS pool_params;
+
+	RtlZeroMemory(&pool_params, sizeof(pool_params));
+	pool_params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+	pool_params.Header.Revision = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+	pool_params.Header.Size = sizeof(pool_params);
+	pool_params.fAllocateNetBuffer = TRUE;
+	pool_params.PoolTag = KKDRV_TAG;
+	pool_params.DataSize = 0;
+	gPoolHandle = NdisAllocateNetBufferListPool(NULL, &pool_params);
+	if (gPoolHandle == NULL)
+	{
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		REPORT_ERROR(NdisAllocateNetBufferListPool, status);
+		goto Exit;
+	}
+
+	KeInitializeSpinLock(&(gPacketQueue.lock));
+
+	/*status = CreateDevice(driver);
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(CreateDevice, status);
+		goto Exit;
+	}*/
+
+	
 
 Exit:
 	return status;
@@ -122,7 +155,6 @@ kkdrvDriverDeviceAdd(
 		WdfDeviceInitFree(DeviceInit);
 		goto Exit;
 	}
-	DbgPrint(_DRVNAME "Device created\n");
 
 	status = CreateQueue(&device, &queue);
 	if (!NT_SUCCESS(status))
@@ -130,7 +162,6 @@ kkdrvDriverDeviceAdd(
 		REPORT_ERROR(CreateQueue, status);
 		goto Exit;
 	}
-	DbgPrint(_DRVNAME "Device I/O queue created\n");
 
 	DECLARE_CONST_UNICODE_STRING(dosDeviceName, DOS_DEVICE_NAME);
 	status = WdfDeviceCreateSymbolicLink(
@@ -141,23 +172,18 @@ kkdrvDriverDeviceAdd(
 		REPORT_ERROR(WdfDeviceCreateSymbolicLink, status);
 		goto Exit;
 	}
-	DbgPrint(_DRVNAME "Symbolic link created\n");
 
-	UNICODE_STRING ref;
-	RtlInitUnicodeString(&ref, L"kkdrvrefstring");
-	status = WdfDeviceCreateDeviceInterface(
+	/*status = WdfDeviceCreateDeviceInterface(
 		device,
 		(LPGUID)&GUID_KKDRV_INTERFACE,
-		NULL //&ref
+		NULL
 		);
 	if (!NT_SUCCESS(status)) {
 		REPORT_ERROR(WdfDeviceCreateDeviceInterface, status);
 		goto Exit;
-	}
-	DbgPrint(_DRVNAME "Device interface created\n");
+	}*/
 
 	WdfControlFinishInitializing(device);
-	DbgPrint(_DRVNAME "Device initialization finished\n");
 
 	status = StartFilterEngine(
 		&gFilteringEngineHandle,
@@ -192,8 +218,8 @@ CreateQueue(
 		WdfIoQueueDispatchSequential
 		);
 
+	ioQueueConfig.PowerManaged = FALSE;
 	ioQueueConfig.EvtIoDeviceControl = kkdrvIoDeviceControl;
-	ioQueueConfig.EvtIoRead = kkdrvIoRead;
 	ioQueueConfig.EvtIoWrite = kkdrvIoWrite;
 
 	status = WdfIoQueueCreate(
@@ -244,11 +270,6 @@ kkdrvIoDeviceControl(
 				REPORT_ERROR(WdfRequestRetrieveInputBuffer, status);
 				goto Complete;
 			}
-
-			DbgPrint(_DRVNAME "Device I/O Control recieved (event_receive: 0x%0x, event_completed: 0x%0x)\n", 
-				data->event_receive, 
-				data->event_completed
-				);
 
 			UnMapAndFreeMemory(gMdl, gUASharedMem);
 			gMdl = NULL;
@@ -305,7 +326,7 @@ kkdrvIoDeviceControl(
 
 			status = WdfRequestRetrieveOutputBuffer(
 				Request,
-				sizeof(PVOID),							// called from 32-bit app, hence 32-bit pointer
+				sizeof(PVOID),
 				&uaMem,
 				NULL
 				);
@@ -317,11 +338,11 @@ kkdrvIoDeviceControl(
 
 			*(PVOID*)uaMem = gUASharedMem;
 			bytes_returned = sizeof(void*);
-			
-			DbgPrint(_DRVNAME "Filter registered\n");
 			break;
 
 		case IOCTL_RESTART:
+			bytes_returned = 0;
+
 			status = RestartEngine(
 				&gFilteringEngineHandle,
 				&gCalloutID,
@@ -330,30 +351,11 @@ kkdrvIoDeviceControl(
 				);
 
 			gStoppingThread = TRUE;
-			StopWorker();
-
-			DbgPrint(_DRVNAME "Filter unregistered\n");
+			//StopWorker();
 			break;
-
-		/*case IOCTL_SET_EVENT_HANDLE:
-			status = WdfRequestRetrieveInputBuffer(
-				Request,
-				sizeof(gUserModeEvent),
-				(void*)&gUserModeEvent,
-				&bytes_read
-				);
-			if (!NT_SUCCESS(status))
-			{
-				REPORT_ERROR(WdfRequestRetrieveInputBuffer, status);
-				goto Complete;
-			}
-
-			DbgPrint(_DRVNAME "Event handle received\n");
-			break;*/
 
 		default:
 			status = STATUS_INVALID_DEVICE_REQUEST;
-			DbgPrint(_DRVNAME "Device I/O Control recieved (invalid IoControlCode)\n");
 			break;
 	}
 
@@ -375,23 +377,6 @@ kkdrvCleanupCallback(
 }
 
 VOID 
-kkdrvIoRead(
-	_In_  WDFQUEUE Queue,
-	_In_  WDFREQUEST Request,
-	_In_  size_t Length
-	)
-{
-	NTSTATUS status = STATUS_SUCCESS;
-
-	UNREFERENCED_PARAMETER(Queue);
-	UNREFERENCED_PARAMETER(Request);
-	UNREFERENCED_PARAMETER(Length);
-
-//Complete:
-	WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
-}
-
-VOID 
 kkdrvIoWrite(
 	_In_  WDFQUEUE Queue,
 	_In_  WDFREQUEST Request,
@@ -400,7 +385,7 @@ kkdrvIoWrite(
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	PVOID data = NULL;
-	size_t bytes_read = 0;
+	size_t bytesRead = 0;
 
 	UNREFERENCED_PARAMETER(Queue);
 	UNREFERENCED_PARAMETER(Length);
@@ -409,16 +394,20 @@ kkdrvIoWrite(
 		Request,
 		1,
 		&data,
-		&bytes_read
+		&bytesRead
 		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(WdfRequestRetrieveInputBuffer, status);
-		goto Complete;
+		WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
 	}
 
-Complete:
-	WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
+	InjectPacketReceive(
+		gInjectionEngineHandle,
+		data,
+		bytesRead,
+		&Request
+		);
 }
 
 NTSTATUS 
@@ -462,8 +451,6 @@ CreateAndMapMemory(
 
 	*UserVa = userVAToReturn;
 	*PMemMdl = mdl;
-
-	DbgPrint(_DRVNAME "UserVA: 0x%0p\n", userVAToReturn);
 
 	return STATUS_SUCCESS;
 }

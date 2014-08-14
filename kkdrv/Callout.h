@@ -34,21 +34,15 @@ CalloutNotifyFunction(
 	);
 
 NTSTATUS 
-InsertNBL(
-	_Inout_ KKDRV_NBL_QUEUE *queue,
-	_In_ NET_BUFFER_LIST *nbl,
-	_In_ const FWPS_INCOMING_METADATA_VALUES0* inMetaValues,
+InsertNBs(
+	_Inout_ KKDRV_PACKET_QUEUE *queue,
+	_In_ NET_BUFFER_LIST *head,
 	_Out_ BOOLEAN *awake
 	);
 
-__inline NET_BUFFER_LIST* 
-TailOfNetBufferListChain(
-	_In_ NET_BUFFER_LIST* netBufferListChain
+__inline PKKDRV_PACKET
+TailOfNetPacketChain(
+	_In_ PKKDRV_PACKET packet
 	);
-
-__inline size_t
-GetNBLLength(
-_In_ NET_BUFFER_LIST* nbl
-);
 
 #endif // !_CALLOUT_H_

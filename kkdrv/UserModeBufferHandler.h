@@ -1,6 +1,8 @@
 #include <ntddk.h>
 #include <wdf.h>
 
+#include "DriverInit.h"
+
 #ifndef _USERMODEBUFFERHANDLER_H_
 #define _USERMODEBUFFERHANDLER_H_
 
@@ -21,21 +23,10 @@ VOID
 StopWorker();
 
 NTSTATUS
-CopyNblDataToBuffer(
-_Inout_ NET_BUFFER_LIST *netBufferListChain,
+CopyPacketDataToBuffer(
+	_Inout_ PKKDRV_PACKET head,
 	_In_ size_t length,
-	_In_ UINT32 flags,
 	_Out_ PVOID buffer
-	);
-
-__inline UINT32
-NBLsInChain(
-	_In_ NET_BUFFER_LIST * nbl
-	);
-
-__inline UINT32
-NBsInChain(
-	_In_ NET_BUFFER_LIST * nbl
 	);
 
 #endif // !_USERMODEBUFFERHANDLER_H_

@@ -5,6 +5,8 @@
 #ifndef _DRIVERINIT_H_
 #define _DRIVERINIT_H_
 
+#define KKDRV_TAG 'vdkK'
+
 // {4F2ADB03-E310-42B5-BEA7-4EB8C00BCA0C}
 DEFINE_GUID(GUID_KKDRV_INTERFACE,
 	0x4f2adb03, 0xe310, 0x42b5, 0xbe, 0xa7, 0x4e, 0xb8, 0xc0, 0xb, 0xca, 0xc);
@@ -20,7 +22,9 @@ DEFINE_GUID(GUID_KKDRV_SUBLAYER,
 
 #define IOCTL_REGISTER			CTL_CODE(FILE_DEVICE_NETWORK, 0x1, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_RESTART			CTL_CODE(FILE_DEVICE_NETWORK, 0x2, METHOD_BUFFERED, FILE_ANY_ACCESS)
-//#define IOCTL_SET_EVENT_HANDLE	CTL_CODE(FILE_DEVICE_NETWORK, 0x3, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define KKDRV_DIRECTION_RECEIVE		0
+#define KKDRV_DIRECTION_SEND		1
 
 #define _DRVNAME "kkVPN: "
 #define _DRVVER "0.1.0"
@@ -28,6 +32,7 @@ DEFINE_GUID(GUID_KKDRV_SUBLAYER,
 
 #define UM_BUFFER_PAGE_COUNT (16)
 #define UM_BUFFER_PAGE_SIZE (PAGE_SIZE*UM_BUFFER_PAGE_COUNT)
+#define KKDRV_PACKET_SIZE               (sizeof(KKDRV_PACKET))
 
 #define REPORT_ERROR(func, status) DbgPrint(_DRVNAME "Error at " #func " - status: 0x%08x.\n", status);
 
@@ -37,22 +42,41 @@ typedef struct KKDRV_FILTER_DATA_
 	unsigned __int32 high;
 	HANDLE event_receive;
 	HANDLE event_completed;
-} KKDRV_FILTER_DATA;
+}
+KKDRV_FILTER_DATA;
 
 #pragma pack (1)
 typedef struct KKDRV_NB_METADATA_
 {
 	UINT16 length;
 	UINT8 protocol;
-} KKDRV_NB_METADATA;
+} 
+KKDRV_NB_METADATA;
 #pragma pack ()
 
+#pragma warning(push)
+#pragma warning(disable:4201) 
 typedef struct KKDRV_NET_BUFFER_FLAT_
 {
-	UINT32 length;
+	union
+	{
+		UINT32 length;
+		UINT32 direction;
+	};
 	char buffer;
-	//KKDRV_NB_METADATA metadata;
-} KKDRV_NET_BUFFER_FLAT;
+} 
+KKDRV_NET_BUFFER_FLAT;
+#pragma warning(pop)
+
+typedef struct KKDRV_PACKET_ KKDRV_PACKET, *PKKDRV_PACKET;
+
+typedef struct KKDRV_PACKET_
+{
+	PKKDRV_PACKET Next;      
+	size_t dataLength;
+	char data;
+} 
+KKDRV_PACKET, *PKKDRV_PACKET;
 
 typedef struct KKDRV_NBL_QUEUE_
 {
@@ -60,13 +84,13 @@ typedef struct KKDRV_NBL_QUEUE_
 
 	BOOLEAN awake;
 
-	PNET_BUFFER_LIST nblHead;
-	PNET_BUFFER_LIST nblTail;
+	PKKDRV_PACKET nblHead;
+	PKKDRV_PACKET nblTail;
 
 	size_t length;
-	UINT32 flags;
+	//UINT32 flags;
 }
-KKDRV_NBL_QUEUE, *PKKDRV_NBL_QUEUE;
+KKDRV_PACKET_QUEUE, *PKKDRV_PACKET_QUEUE;
 
 typedef struct KKDRV_WORKER_DATA_
 {
@@ -75,14 +99,13 @@ typedef struct KKDRV_WORKER_DATA_
 	PKEVENT userevent_complete;
 	PVOID stoppingThread;
 	PVOID mem;
-	PKKDRV_NBL_QUEUE queue;
+	PKKDRV_PACKET_QUEUE queue;
 } 
 KKDRV_WORKER_DATA;
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD kkdrvDriverDeviceAdd;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL kkdrvIoDeviceControl;
-EVT_WDF_IO_QUEUE_IO_READ kkdrvIoRead;
 EVT_WDF_IO_QUEUE_IO_WRITE kkdrvIoWrite;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP kkdrvCleanupCallback;
 
@@ -109,17 +132,20 @@ extern KKDRV_WORKER_DATA gParams;
 
 extern PVOID gUASharedMem;
 extern PVOID gSharedMem;
+extern NDIS_HANDLE gPoolHandle;
 extern HANDLE gFilteringEngineHandle;
 extern HANDLE gInjectionEngineHandle;
 
 extern UINT64 gActiveFilter;
 extern UINT32 gCalloutID;
+extern IF_INDEX gIfIndex;
+extern IF_INDEX gSubIfIndex;
 
 extern PKEVENT gBufferEvent;
 extern PKEVENT gUserModeEventReceive;
 extern PKEVENT gUserModeEventComplete;
 extern PMDL gMdl;
 
-extern KKDRV_NBL_QUEUE gNblQueue;
+extern KKDRV_PACKET_QUEUE gPacketQueue;
 
 #endif // !_DRIVERINIT_H_

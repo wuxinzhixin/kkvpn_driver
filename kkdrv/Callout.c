@@ -28,25 +28,43 @@ CalloutClasifyFunction(
 	UNREFERENCED_PARAMETER(inFixedValues);
 	UNREFERENCED_PARAMETER(classifyContext);
 	UNREFERENCED_PARAMETER(filter);
+	UNREFERENCED_PARAMETER(inMetaValues);
 	UNREFERENCED_PARAMETER(flowContext);
 
 	NTSTATUS status;
 
 	BOOLEAN awake = FALSE;
 
+	NT_ASSERT(gBufferEvent != NULL);
+
+	FWPS_PACKET_INJECTION_STATE injection = FwpsQueryPacketInjectionState(
+		gInjectionEngineHandle,
+		(NET_BUFFER_LIST*)layerData,
+		NULL
+		);
+
+	if (injection == FWPS_PACKET_INJECTED_BY_SELF ||
+		injection == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF)
+	{
+		classifyOut->actionType = FWP_ACTION_PERMIT;
+		return;
+	}		
+
+	gIfIndex = inFixedValues->incomingValue[
+		FWPS_FIELD_INBOUND_IPPACKET_V4_INTERFACE_INDEX].value.uint32;
+	gSubIfIndex = inFixedValues->incomingValue[
+		FWPS_FIELD_INBOUND_IPPACKET_V4_SUB_INTERFACE_INDEX].value.uint32;
+
 	RtlZeroMemory(classifyOut, sizeof(FWPS_CLASSIFY_OUT));
 	classifyOut->flags = FWPS_CLASSIFY_OUT_FLAG_ABSORB;
 
-	NT_ASSERT(gBufferEvent != NULL);
-
-	if (layerData)		// && (classifyOut->rights & FWPS_RIGHT_ACTION_WRITE))
+	if (layerData) // && (classifyOut->rights & FWPS_RIGHT_ACTION_WRITE))
 	{
 		NET_BUFFER_LIST *nbl = (NET_BUFFER_LIST*)layerData;
 
-		status = InsertNBL(
-			&gNblQueue,
-			nbl, //(NET_BUFFER_LIST*)layerData,
-			inMetaValues,
+		status = InsertNBs(
+			&gPacketQueue,
+			nbl,
 			&awake
 			);
 		if (!NT_SUCCESS(status))
@@ -58,15 +76,9 @@ CalloutClasifyFunction(
 
 		classifyOut->actionType = FWP_ACTION_BLOCK;
 		classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-		
-		DbgPrint(_DRVNAME "Callout!");
+
 		KeSetEvent(gBufferEvent, IO_NO_INCREMENT, FALSE);
 	}
-	/*else
-	{
-		classifyOut->actionType = FWP_ACTION_PERMIT;
-		classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-	}*/
 		
 }
 
@@ -84,77 +96,86 @@ CalloutNotifyFunction(
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS 
-InsertNBL(
-	_Inout_ KKDRV_NBL_QUEUE *queue,
-	_In_ NET_BUFFER_LIST *nbl,
-	_In_ const FWPS_INCOMING_METADATA_VALUES0* inMetaValues,
+NTSTATUS
+InsertNBs(
+	_Inout_ KKDRV_PACKET_QUEUE *queue,
+	_In_ NET_BUFFER_LIST *head,
 	_Out_ BOOLEAN *awake
-	)
+)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	KLOCK_QUEUE_HANDLE lockHandle;
 
-	NET_BUFFER_LIST *clone;
+	NET_BUFFER_LIST *nbl = head;
+	NET_BUFFER *nb;
 
-	NdisRetreatNetBufferDataStart(
-		NET_BUFFER_LIST_FIRST_NB(nbl),
-		inMetaValues->ipHeaderSize,
-		0,
-		NULL
-		);
-
-	status = FwpsAllocateCloneNetBufferList(
-		nbl,
-		NULL,
-		NULL,
-		0,
-		&clone
-		);
-	if (!NT_SUCCESS(status))
+	while (nbl)
 	{
-		goto Exit;
+		nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+
+		while (nb)
+		{
+			PVOID data;
+			ULONG dataLength = NET_BUFFER_DATA_LENGTH(nb);
+			PKKDRV_PACKET packet = (PKKDRV_PACKET)ExAllocatePoolWithTag(
+				NonPagedPool,
+				KKDRV_PACKET_SIZE + dataLength,
+				KKDRV_TAG
+				);
+			if (packet == NULL)
+			{
+				return STATUS_INSUFFICIENT_RESOURCES;
+			};
+
+			packet->dataLength = dataLength;
+			data = NdisGetDataBuffer(nb, dataLength, NULL, 1, 0);
+			if (data == NULL)
+			{
+				NdisGetDataBuffer(nb, dataLength, &(packet->data), 1, 0);
+			}
+			else
+			{
+				RtlCopyMemory(&(packet->data), data, dataLength);
+			}
+
+			KeAcquireInStackQueuedSpinLockAtDpcLevel(
+				&(queue->lock),
+				&lockHandle
+				);
+
+			if (queue->nblTail != NULL)
+			{
+				queue->nblTail->Next = packet;
+			}
+			else
+			{
+				queue->nblHead = packet;
+			}
+
+			queue->nblTail = TailOfNetPacketChain(packet);
+			queue->length += dataLength;
+			*awake = queue->awake;
+
+			KeReleaseInStackQueuedSpinLockFromDpcLevel(
+				&lockHandle
+				);
+
+			nb = nb->Next;
+		}
+
+		nbl = nbl->Next;
 	}
 
-	NdisAdvanceNetBufferDataStart(
-		NET_BUFFER_LIST_FIRST_NB(nbl),
-		inMetaValues->ipHeaderSize,
-		FALSE,
-		NULL);
-
-	KeAcquireInStackQueuedSpinLock(
-		&(queue->lock),
-		&lockHandle
-		);
-
-	if (queue->nblTail != NULL)
-	{
-		queue->nblTail->Next = clone;
-	}
-	else
-	{
-		queue->nblHead = clone;
-	}
-
-	queue->nblTail = TailOfNetBufferListChain(clone);
-	queue->length += GetNBLLength(clone);
-	queue->flags = inMetaValues->flags;
-	*awake = queue->awake;
-
-	KeReleaseInStackQueuedSpinLock(
-		&lockHandle
-		);
-
-Exit:
+//Exit:
 	return status;
 }
 
-__inline NET_BUFFER_LIST* 
-TailOfNetBufferListChain(
-	_In_ NET_BUFFER_LIST* nbl
+__inline PKKDRV_PACKET
+TailOfNetPacketChain(
+	_In_ PKKDRV_PACKET packet
 	)
 {
-	NET_BUFFER_LIST* out = nbl;
+	PKKDRV_PACKET out = packet;
 
 	while (out->Next != NULL)
 	{
@@ -163,40 +184,3 @@ TailOfNetBufferListChain(
 
 	return out;
 }
-
-__inline size_t
-GetNBLLength(
-	_In_ NET_BUFFER_LIST* nbl
-	)
-{
-	NET_BUFFER_LIST* out = nbl;
-	size_t length = 0;
-
-	while (out)
-	{
-		NET_BUFFER *nb = out->FirstNetBuffer;
-
-		while (nb)
-		{
-			length += NET_BUFFER_DATA_LENGTH(nb);
-			nb = nb->Next;
-		}
-
-		out = out->Next;
-	}
-
-	return length;
-}
-
-//{
-//	NET_BUFFER* out = nbl->FirstNetBuffer;
-//	size_t length = 0;
-//
-//	while (out != NULL)
-//	{
-//		length += NET_BUFFER_DATA_LENGTH(out); // ->DataLength;
-//		out = out->Next;
-//	}
-//
-//	return length;
-//}
