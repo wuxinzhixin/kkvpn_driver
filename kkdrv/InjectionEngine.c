@@ -1,17 +1,4 @@
-#include <ntddk.h>
-#include <wdf.h>
-
-#pragma warning(push)
-#pragma warning(disable:4201)       // unnamed struct/union
-
-#include <fwpsk.h>
-
-#pragma warning(pop)
-
-#include <fwpmk.h>
-
 #include "InjectionEngine.h"
-#include "DriverInit.h"
 
 NTSTATUS 
 StartInjectionEngine(
@@ -50,7 +37,9 @@ StopInjectionEngine(
 	NTSTATUS status = STATUS_SUCCESS;
 
 	if (!(*engineHandle))
+	{
 		return;
+	}
 
 	status = FwpsInjectionHandleDestroy(*engineHandle);
 	if (!NT_SUCCESS(status))

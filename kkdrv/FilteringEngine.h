@@ -1,16 +1,3 @@
-//#include <ntifs.h>
-#include <ntddk.h>
-#include <wdf.h>
-
-//#pragma warning(push)
-//#pragma warning(disable:4201)       // unnamed struct/union
-//
-//#include <fwpsk.h>
-//
-//#pragma warning(pop)
-//
-//#include <fwpmk.h>
-
 #ifndef _FILTERINGENGINE_H_
 #define _FILTERINGENGINE_H_
 

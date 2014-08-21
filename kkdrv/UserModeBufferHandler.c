@@ -1,14 +1,14 @@
-#include <ntddk.h>
-#include <wdf.h>
-
-#pragma warning(push)
-#pragma warning(disable:4201)       // unnamed struct/union
-
-#include <fwpsk.h>
-
-#pragma warning(pop)
-
-#include <fwpmk.h>
+//#include <ntddk.h>
+////#include <wdf.h>
+//
+//#pragma warning(push)
+//#pragma warning(disable:4201)       // unnamed struct/union
+//
+//#include <fwpsk.h>
+//
+//#pragma warning(pop)
+//
+//#include <fwpmk.h>
 
 #include "UserModeBufferHandler.h"
 #include "DriverInit.h"

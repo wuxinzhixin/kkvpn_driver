@@ -1,9 +1,16 @@
+#ifndef _DRIVERINIT_H_
+#define _DRIVERINIT_H_
+
 #include <ntddk.h>
 #include <wdf.h>
 #include <initguid.h>
 
-#ifndef _DRIVERINIT_H_
-#define _DRIVERINIT_H_
+#pragma warning(push)
+#pragma warning(disable:4201)       // unnamed struct/union
+#include <fwpsk.h>
+#pragma warning(pop)
+
+#include <fwpmk.h>
 
 #define KKDRV_TAG 'vdkK'
 

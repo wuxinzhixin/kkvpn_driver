@@ -1,15 +1,15 @@
-//#include <ntifs.h>
-#include <ntddk.h>
-#include <wdf.h>
+//#include <ntddk.h>
+//#include <wdf.h>
 
-#pragma warning(push)
-#pragma warning(disable:4201)       // unnamed struct/union
-#include <fwpsk.h>
-#pragma warning(pop)
-
-#include <fwpmk.h>
+//#pragma warning(push)
+//#pragma warning(disable:4201)       // unnamed struct/union
+//#include <fwpsk.h>
+//#pragma warning(pop)
+//
+//#include <fwpmk.h>
 
 #include "FilteringEngine.h"
+
 #include "DriverInit.h"
 #include "Callout.h"
 #include "UserModeBufferHandler.h"
@@ -136,7 +136,7 @@ RegisterCallout(
 	PDEVICE_OBJECT deviceObject = WdfDeviceWdmGetDeviceObject(device);
 
 	sCallout.calloutKey = GUID_KKDRV_CALLOUT;
-	sCallout.classifyFn = CalloutClasifyFunction;
+	sCallout.classifyFn = CalloutClassifyFunction;
 	sCallout.notifyFn = CalloutNotifyFunction;
 
 	status = FwpsCalloutRegister(

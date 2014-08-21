@@ -1,25 +1,24 @@
-#include <ntddk.h>
-#include <wdf.h>
-
-#pragma warning(push)
-#pragma warning(disable:4201)       // unnamed struct/union
-#include <fwpsk.h>
-#pragma warning(pop)
-
-#include <fwpmk.h>
-
 #include "DriverInit.h"
+
 #include "FilteringEngine.h"
 #include "InjectionEngine.h"
 #include "UserModeBufferHandler.h"
 
+//#include <ntddk.h>
+//#include <wdf.h>
+//
+//#pragma warning(push)
+//#pragma warning(disable:4201)       // unnamed struct/union
+//#include <fwpsk.h>
+//#pragma warning(pop)
+//
+//#include <fwpmk.h>
+
 DECLARE_CONST_UNICODE_STRING(
-SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
-L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
-);
-
-//FWPM_SUBLAYER gSublayer;
-
+	SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
+	L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
+	);
+	
 BOOLEAN gStoppingThread;
 KKDRV_WORKER_DATA gParams;
 
@@ -114,15 +113,6 @@ DriverEntry(
 	}
 
 	KeInitializeSpinLock(&(gPacketQueue.lock));
-
-	/*status = CreateDevice(driver);
-	if (!NT_SUCCESS(status))
-	{
-		REPORT_ERROR(CreateDevice, status);
-		goto Exit;
-	}*/
-
-	
 
 Exit:
 	return status;
@@ -461,7 +451,8 @@ UnMapAndFreeMemory(
 	PVOID UserVa
 	)
 {
-	if (!PMdl) {
+	if (!PMdl) 
+	{
 		return;
 	}
 

@@ -1,10 +1,7 @@
-#include <ntddk.h>
-#include <wdf.h>
-
-#include "DriverInit.h"
-
 #ifndef _USERMODEBUFFERHANDLER_H_
 #define _USERMODEBUFFERHANDLER_H_
+
+#include "DriverInit.h"
 
 extern HANDLE gWorkerThreadHandle;
 extern PVOID gWorkerThreadObj;
