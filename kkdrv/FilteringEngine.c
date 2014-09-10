@@ -1,13 +1,3 @@
-//#include <ntddk.h>
-//#include <wdf.h>
-
-//#pragma warning(push)
-//#pragma warning(disable:4201)       // unnamed struct/union
-//#include <fwpsk.h>
-//#pragma warning(pop)
-//
-//#include <fwpmk.h>
-
 #include "FilteringEngine.h"
 
 #include "DriverInit.h"
@@ -297,8 +287,6 @@ RegisterFilter(
 		goto Exit;
 	}
 	transactionStarted = FALSE;
-
-	StartWorker(&gBufferEvent);
 
 Exit:
 

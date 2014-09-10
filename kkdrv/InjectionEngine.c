@@ -7,13 +7,6 @@ StartInjectionEngine(
 {
 	NTSTATUS status = STATUS_SUCCESS;
 
-	status = GetInterfaceData();
-	if (!NT_SUCCESS(status))
-	{
-		REPORT_ERROR(GetInterfaceData, status);
-		goto Exit;
-	}
-
 	status = FwpsInjectionHandleCreate(
 		AF_INET, 
 		FWPS_INJECTION_TYPE_NETWORK,
@@ -61,7 +54,7 @@ InjectPacketReceive(
 {
 	NTSTATUS status = STATUS_SUCCESS;
 
-	NET_BUFFER_LIST *nbl = NULL;
+	PNET_BUFFER_LIST nbl;
 	
 	status = InsertDataToNBL(
 		data,
@@ -74,21 +67,6 @@ InjectPacketReceive(
 		return status;
 	}
 
-	//IF_INDEX If = gIfIndex;
-	//IF_INDEX subIf = gSubIfIndex;
-
-	//status = FwpsInjectNetworkReceiveAsync(
-	//	engineHandle,
-	//	NULL,
-	//	0,
-	//	UNSPECIFIED_COMPARTMENT_ID,
-	//	If, //gIfIndex,
-	//	subIf, //gSubIfIndex,
-	//	nbl,
-	//	InjectComplete,
-	//	request
-	//	);
-
 	status = FwpsInjectNetworkSendAsync(
 		engineHandle,
 		NULL,
@@ -99,18 +77,16 @@ InjectPacketReceive(
 		*request
 		);
 
-	/*status = FwpsInjectTransportReceiveAsync0(
+	/*status = FwpsInjectNetworkReceiveAsync(
 		engineHandle,
 		NULL,
-		NULL,
 		0,
-		AF_INET,
 		UNSPECIFIED_COMPARTMENT_ID,
-		gIfIndex,
-		gSubIfIndex,
+		10,
+		0,
 		nbl,
 		InjectComplete,
-		request
+		*request
 		);*/
 		
 	if (!NT_SUCCESS(status))
@@ -129,10 +105,9 @@ InsertDataToNBL(
 	_Out_ NET_BUFFER_LIST **nbl
 	)
 {
+	PNET_BUFFER_LIST nblOut = NULL;
 	NTSTATUS status = STATUS_SUCCESS;
 	PMDL mdl = NULL;
-	//PIP4HDR ip4header = (PIP4HDR)data;
-	//ULONG headerSize = ip4header->HdrLength * 4; //(((char*)buffer)[0] & 0xF) * 4;
 
 	PVOID buffer = ExAllocatePoolWithTag(
 		NonPagedPool, 
@@ -164,14 +139,14 @@ InsertDataToNBL(
 
 	MmBuildMdlForNonPagedPool(mdl);
 
-	status = FwpsAllocateNetBufferAndNetBufferList0(
+	status = FwpsAllocateNetBufferAndNetBufferList(
 		gPoolHandle,
 		0,
 		0,
 		mdl,
 		0,
 		length,
-		nbl
+		&nblOut
 		);
 	if (!NT_SUCCESS(status))
 	{
@@ -179,28 +154,7 @@ InsertDataToNBL(
 		goto Exit;
 	}
 
-	/*FwpsConstructIpHeaderForTransportPacket0(
-		*nbl,
-		headerSize,
-		AF_INET,
-		(UCHAR*)&ip4header->SrcAddr,
-		(UCHAR*)&ip4header->DstAddr,
-		(IPPROTO)ip4header->Protocol,
-		0,
-		NULL,
-		0,
-		0,
-		NULL,
-		gIfIndex,
-		gSubIfIndex
-		);*/
-
-	/*NdisAdvanceNetBufferListDataStart(
-		*nbl,
-		headerSize,
-		FALSE,
-		NULL
-		);*/
+	*nbl = nblOut;
 
 Exit:
 
@@ -243,15 +197,4 @@ InjectComplete(
 	ExFreePoolWithTag(buffer, KKDRV_TAG);
 
 	WdfRequestCompleteWithInformation(request, NET_BUFFER_LIST_STATUS(nbl), NET_BUFFER_DATA_LENGTH(nb));
-}
-
-NTSTATUS
-GetInterfaceData()
-{
-	NTSTATUS status = STATUS_SUCCESS;
-
-	gIfIndex = 0;
-	gSubIfIndex = 0;
-
-	return status;
 }

@@ -5,6 +5,7 @@
 #include <wdf.h>
 #include <initguid.h>
 
+
 #pragma warning(push)
 #pragma warning(disable:4201)       // unnamed struct/union
 #include <fwpsk.h>
@@ -33,6 +34,9 @@ DEFINE_GUID(GUID_KKDRV_SUBLAYER,
 #define KKDRV_DIRECTION_RECEIVE		0
 #define KKDRV_DIRECTION_SEND		1
 
+#define KKDRV_MAX_PACKET_QUEUE_LENGTH 2048
+#define KKDRV_MAX_READ_PACKET_COUNT 2048
+
 #define _DRVNAME "kkVPN: "
 #define _DRVVER "0.1.0"
 #define DOS_DEVICE_NAME  L"\\DosDevices\\kkdrv"
@@ -47,19 +51,8 @@ typedef struct KKDRV_FILTER_DATA_
 {
 	unsigned __int32 low;
 	unsigned __int32 high;
-	HANDLE event_receive;
-	HANDLE event_completed;
 }
 KKDRV_FILTER_DATA;
-
-#pragma pack (1)
-typedef struct KKDRV_NB_METADATA_
-{
-	UINT16 length;
-	UINT8 protocol;
-} 
-KKDRV_NB_METADATA;
-#pragma pack ()
 
 #pragma warning(push)
 #pragma warning(disable:4201) 
@@ -79,80 +72,54 @@ typedef struct KKDRV_PACKET_ KKDRV_PACKET, *PKKDRV_PACKET;
 
 typedef struct KKDRV_PACKET_
 {
-	PKKDRV_PACKET Next;      
+	LIST_ENTRY entry;
 	size_t dataLength;
 	char data;
 } 
 KKDRV_PACKET, *PKKDRV_PACKET;
 
-typedef struct KKDRV_NBL_QUEUE_
+typedef struct KKDRV_QUEUE_DATA_
 {
-	KSPIN_LOCK lock;
-
-	BOOLEAN awake;
-
-	PKKDRV_PACKET nblHead;
-	PKKDRV_PACKET nblTail;
-
-	size_t length;
-	//UINT32 flags;
-}
-KKDRV_PACKET_QUEUE, *PKKDRV_PACKET_QUEUE;
-
-typedef struct KKDRV_WORKER_DATA_
-{
-	KEVENT event;
-	PKEVENT userevent_receive;
-	PKEVENT userevent_complete;
-	PVOID stoppingThread;
-	PVOID mem;
-	PKKDRV_PACKET_QUEUE queue;
+	KSPIN_LOCK queueLock;
+	ULONG queueLength;
+	ULONG queueLengthMax;
+	LIST_ENTRY queue;
 } 
-KKDRV_WORKER_DATA;
+KKDRV_QUEUE_DATA;
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD kkdrvDriverDeviceAdd;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL kkdrvIoDeviceControl;
 EVT_WDF_IO_QUEUE_IO_WRITE kkdrvIoWrite;
+EVT_WDF_IO_QUEUE_IO_READ kkdrvIoRead;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP kkdrvCleanupCallback;
 
 VOID 
-kkVPNUnload();
-
-NTSTATUS 
-CreateQueue();
-
-NTSTATUS 
-CreateAndMapMemory(
-	PMDL* PMemMdl, 
-	PVOID* UserVa
+kkVPNUnload(
+	_In_ PDRIVER_OBJECT pDriverObject
 	);
 
-void 
-UnMapAndFreeMemory(
-	PMDL PMdl, 
-	PVOID UserVa
+NTSTATUS
+CreateQueue(
+	_In_ WDFDEVICE *hDevice,
+	_Out_ WDFQUEUE *hQueue
 	);
 
-extern BOOLEAN gStoppingThread;
-extern KKDRV_WORKER_DATA gParams;
+VOID
+InitializePacketQueue(
+	_Inout_ KKDRV_QUEUE_DATA *packetQueue
+	);
 
-extern PVOID gUASharedMem;
-extern PVOID gSharedMem;
+VOID
+ClearPacketQueue(
+	_Inout_ KKDRV_QUEUE_DATA *packetQueue
+	);
+
 extern NDIS_HANDLE gPoolHandle;
 extern HANDLE gFilteringEngineHandle;
 extern HANDLE gInjectionEngineHandle;
-
 extern UINT64 gActiveFilter;
 extern UINT32 gCalloutID;
-extern IF_INDEX gIfIndex;
-extern IF_INDEX gSubIfIndex;
-
-extern PKEVENT gBufferEvent;
-extern PKEVENT gUserModeEventReceive;
-extern PKEVENT gUserModeEventComplete;
-extern PMDL gMdl;
-
-extern KKDRV_PACKET_QUEUE gPacketQueue;
+extern KKDRV_QUEUE_DATA gPacketQueue;
 
 #endif // !_DRIVERINIT_H_

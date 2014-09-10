@@ -22,16 +22,10 @@ CalloutNotifyFunction(
 	_Inout_ FWPS_FILTER* filter
 	);
 
-NTSTATUS 
+NTSTATUS
 InsertNBs(
-	_Inout_ KKDRV_PACKET_QUEUE *queue,
-	_In_ NET_BUFFER_LIST *head,
-	_Out_ BOOLEAN *awake
-	);
-
-__inline PKKDRV_PACKET
-TailOfNetPacketChain(
-	_In_ PKKDRV_PACKET packet
+	_Inout_ KKDRV_QUEUE_DATA *queueData,
+	_In_ NET_BUFFER_LIST *head
 	);
 
 #endif // !_CALLOUT_H_

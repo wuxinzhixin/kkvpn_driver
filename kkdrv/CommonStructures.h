@@ -8,8 +8,6 @@ typedef struct KKDRV_FILTER_DATA_
 {
 	unsigned __int32 low;
 	unsigned __int32 high;
-	unsigned __int64 event_receive;
-	unsigned __int64 event_completed;
 } KKDRV_FILTER_DATA;
 
 typedef struct KKDRV_NET_BUFFER_FLAT_

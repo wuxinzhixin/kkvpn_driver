@@ -21,9 +21,11 @@ CalloutClassifyFunction(
 	UNREFERENCED_PARAMETER(flowContext);
 
 	NTSTATUS status;
-	BOOLEAN awake = FALSE;
 
-	NT_ASSERT(gBufferEvent != NULL);
+	if (layerData == NULL)
+	{
+		return;
+	}
 
 	FWPS_PACKET_INJECTION_STATE injection = FwpsQueryPacketInjectionState(
 		gInjectionEngineHandle,
@@ -31,20 +33,20 @@ CalloutClassifyFunction(
 		NULL
 		);
 
+	RtlZeroMemory(classifyOut, sizeof(FWPS_CLASSIFY_OUT));
+
 	if (injection == FWPS_PACKET_INJECTED_BY_SELF ||
 		injection == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF)
 	{
 		classifyOut->actionType = FWP_ACTION_PERMIT;
 		return;
 	}		
-
-	gIfIndex = inFixedValues->incomingValue[
-		FWPS_FIELD_INBOUND_IPPACKET_V4_INTERFACE_INDEX].value.uint32;
-	gSubIfIndex = inFixedValues->incomingValue[
-		FWPS_FIELD_INBOUND_IPPACKET_V4_SUB_INTERFACE_INDEX].value.uint32;
-
-	RtlZeroMemory(classifyOut, sizeof(FWPS_CLASSIFY_OUT));
-	classifyOut->flags = FWPS_CLASSIFY_OUT_FLAG_ABSORB;
+	else
+	{
+		classifyOut->actionType = FWP_ACTION_BLOCK;
+		//classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
+		classifyOut->flags = FWPS_CLASSIFY_OUT_FLAG_ABSORB;
+	}
 
 	if (layerData) // && (classifyOut->rights & FWPS_RIGHT_ACTION_WRITE))
 	{
@@ -52,20 +54,12 @@ CalloutClassifyFunction(
 
 		status = InsertNBs(
 			&gPacketQueue,
-			nbl,
-			&awake
+			nbl
 			);
 		if (!NT_SUCCESS(status))
 		{
 			REPORT_ERROR(InsertNBL, status);
-		}
-
-		NT_ASSERT(nbl->FirstNetBuffer->Next == NULL);
-
-		classifyOut->actionType = FWP_ACTION_BLOCK;
-		classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-
-		KeSetEvent(gBufferEvent, IO_NO_INCREMENT, FALSE);
+		}	
 	}
 		
 }
@@ -86,10 +80,9 @@ CalloutNotifyFunction(
 
 NTSTATUS
 InsertNBs(
-	_Inout_ KKDRV_PACKET_QUEUE *queue,
-	_In_ NET_BUFFER_LIST *head,
-	_Out_ BOOLEAN *awake
-)
+	_Inout_ KKDRV_QUEUE_DATA *queueData,
+	_In_ NET_BUFFER_LIST *head
+	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	KLOCK_QUEUE_HANDLE lockHandle;
@@ -119,7 +112,7 @@ InsertNBs(
 			data = NdisGetDataBuffer(nb, dataLength, NULL, 1, 0);
 			if (data == NULL)
 			{
-				NdisGetDataBuffer(nb, dataLength, &(packet->data), 1, 0);
+				NdisGetDataBuffer(nb, dataLength, &packet->data, 1, 0);
 			}
 			else
 			{
@@ -127,22 +120,19 @@ InsertNBs(
 			}
 
 			KeAcquireInStackQueuedSpinLockAtDpcLevel(
-				&(queue->lock),
+				&queueData->queueLock,
 				&lockHandle
 				);
 
-			if (queue->nblTail != NULL)
-			{
-				queue->nblTail->Next = packet;
-			}
-			else
-			{
-				queue->nblHead = packet;
-			}
+			InsertTailList(&queueData->queue, &packet->entry);
+			queueData->queueLength++;
 
-			queue->nblTail = TailOfNetPacketChain(packet);
-			queue->length += dataLength;
-			*awake = queue->awake;
+			if (queueData->queueLength > queueData->queueLengthMax)
+			{
+				PLIST_ENTRY entry = RemoveHeadList(&queueData->queue);
+				ExFreePoolWithTag(entry, KKDRV_TAG);
+				queueData->queueLength--;
+			}
 
 			KeReleaseInStackQueuedSpinLockFromDpcLevel(
 				&lockHandle
@@ -154,21 +144,5 @@ InsertNBs(
 		nbl = nbl->Next;
 	}
 
-//Exit:
 	return status;
-}
-
-__inline PKKDRV_PACKET
-TailOfNetPacketChain(
-	_In_ PKKDRV_PACKET packet
-	)
-{
-	PKKDRV_PACKET out = packet;
-
-	while (out->Next != NULL)
-	{
-		out = out->Next;
-	}
-
-	return out;
 }

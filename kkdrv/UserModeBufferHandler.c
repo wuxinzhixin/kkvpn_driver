@@ -1,20 +1,5 @@
-//#include <ntddk.h>
-////#include <wdf.h>
-//
-//#pragma warning(push)
-//#pragma warning(disable:4201)       // unnamed struct/union
-//
-//#include <fwpsk.h>
-//
-//#pragma warning(pop)
-//
-//#include <fwpmk.h>
-
 #include "UserModeBufferHandler.h"
 #include "DriverInit.h"
-
-HANDLE gWorkerThreadHandle;
-PVOID gWorkerThreadObj;
 
 VOID 
 WorkerRoutine(
@@ -92,74 +77,6 @@ WorkerRoutine(
 	}
 
 	PsTerminateSystemThread(STATUS_SUCCESS);
-}
-
-NTSTATUS 
-StartWorker(
-	_Out_ PKEVENT *NtfyEvent
-	)
-{
-	NTSTATUS status = STATUS_SUCCESS;
-	gStoppingThread = FALSE;
-
-	KeInitializeEvent(
-		&gParams.event,
-		NotificationEvent,
-		FALSE
-		);
-
-	*NtfyEvent = &gParams.event;
-	gParams.stoppingThread = &gStoppingThread;
-	gParams.userevent_receive = gUserModeEventReceive;
-	gParams.userevent_complete = gUserModeEventComplete;
-	gParams.mem = gSharedMem;
-	gParams.queue = &gPacketQueue;
-
-	status = PsCreateSystemThread(
-		&gWorkerThreadHandle,
-		THREAD_ALL_ACCESS,
-		NULL,
-		NULL,
-		NULL,
-		WorkerRoutine,
-		&gParams
-		);
-	if (!NT_SUCCESS(status))
-	{
-		REPORT_ERROR(PsCreateSystemThread, status);
-		return status;
-	}
-
-	status = ObReferenceObjectByHandle(
-		gWorkerThreadHandle,
-		0,
-		NULL,
-		KernelMode,
-		&gWorkerThreadObj,
-		NULL
-		);
-	NT_ASSERT(NT_SUCCESS(status));
-
-	ZwClose(gWorkerThreadHandle);
-
-	return status;
-}
-
-VOID 
-StopWorker()
-{
-	if (!gWorkerThreadObj)
-		return;
-
-	KeWaitForSingleObject(
-		gWorkerThreadObj,
-		Executive,
-		KernelMode,
-		FALSE,
-		NULL
-		);
-
-	//ObDereferenceObject(gWorkerThreadObj);
 }
 
 NTSTATUS

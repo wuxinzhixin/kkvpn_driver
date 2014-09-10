@@ -55,7 +55,4 @@ InjectComplete(
 	_In_     BOOLEAN dispatchLevel
 	);
 
-NTSTATUS
-GetInterfaceData();
-
 #endif // !_INJECTIONENGINE_H_
