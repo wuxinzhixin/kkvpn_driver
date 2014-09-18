@@ -60,6 +60,12 @@ CalloutClassifyFunction(
 		{
 			REPORT_ERROR(InsertNBL, status);
 		}	
+
+		if (gPendingRequest != NULL)
+		{
+			CompleteRequest(gPendingRequest);
+			gPendingRequest = NULL;
+		}
 	}
 		
 }

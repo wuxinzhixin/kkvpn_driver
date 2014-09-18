@@ -34,8 +34,8 @@ DEFINE_GUID(GUID_KKDRV_SUBLAYER,
 #define KKDRV_DIRECTION_RECEIVE		0
 #define KKDRV_DIRECTION_SEND		1
 
-#define KKDRV_MAX_PACKET_QUEUE_LENGTH 2048
-#define KKDRV_MAX_READ_PACKET_COUNT 2048
+#define KKDRV_MAX_PACKET_QUEUE_LENGTH 1024
+#define KKDRV_MAX_READ_PACKET_COUNT 512
 
 #define _DRVNAME "kkVPN: "
 #define _DRVVER "0.1.0"
@@ -101,8 +101,7 @@ kkVPNUnload(
 
 NTSTATUS
 CreateQueue(
-	_In_ WDFDEVICE *hDevice,
-	_Out_ WDFQUEUE *hQueue
+	_In_ WDFDEVICE *hDevice
 	);
 
 VOID
@@ -115,9 +114,15 @@ ClearPacketQueue(
 	_Inout_ KKDRV_QUEUE_DATA *packetQueue
 	);
 
+VOID
+CompleteRequest(
+	_In_ WDFREQUEST Request
+	);
+
 extern NDIS_HANDLE gPoolHandle;
 extern HANDLE gFilteringEngineHandle;
 extern HANDLE gInjectionEngineHandle;
+extern WDFREQUEST gPendingRequest;
 extern UINT64 gActiveFilter;
 extern UINT32 gCalloutID;
 extern KKDRV_QUEUE_DATA gPacketQueue;

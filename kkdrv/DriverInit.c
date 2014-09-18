@@ -12,7 +12,7 @@ DECLARE_CONST_UNICODE_STRING(
 KKDRV_QUEUE_DATA gPacketQueue;
 UINT64 gActiveFilter;
 UINT32 gCalloutID;
-WDFQUEUE gQueue;
+WDFREQUEST gPendingRequest;
 HANDLE gFilteringEngineHandle;
 HANDLE gInjectionEngineHandle;
 NDIS_HANDLE gPoolHandle;
@@ -113,7 +113,7 @@ kkdrvDriverDeviceAdd(
 		goto Exit;
 	}
 
-	status = CreateQueue(&device, &gQueue);
+	status = CreateQueue(&device);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(CreateQueue, status);
@@ -184,62 +184,80 @@ ClearPacketQueue(
 
 NTSTATUS 
 CreateQueue(
-	_In_ WDFDEVICE *hDevice,
-	_Out_ WDFQUEUE *hQueue
+	_In_ WDFDEVICE *hDevice
 	)
 {
-	hQueue = NULL;
+	WDFQUEUE writeQueue = NULL;
+	WDFQUEUE readQueue = NULL;
 
 	NTSTATUS status = STATUS_SUCCESS;
-	WDF_IO_QUEUE_CONFIG ioQueueConfig;
+	WDF_IO_QUEUE_CONFIG ioWriteQueueConfig;
+	WDF_IO_QUEUE_CONFIG ioReadQueueConfig;
 
 	WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
-		&ioQueueConfig,
-		WdfIoQueueDispatchSequential
+		&ioWriteQueueConfig,
+		WdfIoQueueDispatchParallel
 		);
 
-	ioQueueConfig.PowerManaged = FALSE;
-	ioQueueConfig.EvtIoDeviceControl = kkdrvIoDeviceControl;
-	ioQueueConfig.EvtIoWrite = kkdrvIoWrite;
-	ioQueueConfig.EvtIoRead = kkdrvIoRead;
+	ioWriteQueueConfig.PowerManaged = FALSE;
+	ioWriteQueueConfig.EvtIoDeviceControl = kkdrvIoDeviceControl;
+	ioWriteQueueConfig.EvtIoWrite = kkdrvIoWrite;
 
 	status = WdfIoQueueCreate(
 		*hDevice,
-		&ioQueueConfig,
+		&ioWriteQueueConfig,
 		WDF_NO_OBJECT_ATTRIBUTES,
-		hQueue
+		&writeQueue
 		);
-	if (!NT_SUCCESS(status)) {
-		REPORT_ERROR(WdfIoQueueCreate, status);
+	if (!NT_SUCCESS(status)) 
+	{
+		REPORT_ERROR(WdfIoQueueCreate(Write), status);
 		goto Exit;
 	}
 
-	/*WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
-		&ioQueueConfigRead,
+	WDF_IO_QUEUE_CONFIG_INIT(
+		&ioReadQueueConfig,
 		WdfIoQueueDispatchSequential
 		);
 
-	ioQueueConfigRead.PowerManaged = FALSE;
-	ioQueueConfigRead.EvtIoRead = kkdrvIoRead;
+	ioReadQueueConfig.PowerManaged = FALSE;
+	ioReadQueueConfig.EvtIoRead = kkdrvIoRead;
 
 	status = WdfIoQueueCreate(
 		*hDevice,
-		&ioQueueConfigRead,
+		&ioReadQueueConfig,
 		WDF_NO_OBJECT_ATTRIBUTES,
-		hQueueRead
+		&readQueue
 		);
-	if (!NT_SUCCESS(status)) {
-		REPORT_ERROR(WdfIoQueueCreate, status);
+	if (!NT_SUCCESS(status)) 
+	{
+		REPORT_ERROR(WdfIoQueueCreate(Read), status);
 		goto Exit;
 	}
-*/
+
+	status = WdfDeviceConfigureRequestDispatching(
+		*hDevice,
+		readQueue,
+		WdfRequestTypeRead
+		);
+	if (!NT_SUCCESS(status)) 
+	{
+		REPORT_ERROR(WdfDeviceConfigureRequestDispatching(Read), status);
+		goto Exit;
+	}
+
 Exit:
 
 	if (!NT_SUCCESS(status))
 	{
-		if (hQueue != NULL)
+		if (writeQueue != NULL)
 		{
-			WdfObjectDelete(hQueue);
+			WdfObjectDelete(writeQueue);
+		}
+
+		if (readQueue != NULL)
+		{
+			WdfObjectDelete(readQueue);
 		}
 	}
 
@@ -378,6 +396,35 @@ kkdrvIoRead(
 	UNREFERENCED_PARAMETER(Queue);
 	UNREFERENCED_PARAMETER(Length);
 
+	ULONG queueLength;
+	KLOCK_QUEUE_HANDLE lockHandle;
+
+	KeAcquireInStackQueuedSpinLock(
+		&gPacketQueue.queueLock,
+		&lockHandle
+		);
+
+	queueLength = gPacketQueue.queueLength;
+
+	KeReleaseInStackQueuedSpinLock(
+		&lockHandle
+		);
+
+	if (gPacketQueue.queueLength > 0)
+	{
+		CompleteRequest(Request);
+	}
+	else
+	{
+		gPendingRequest = Request;
+	}
+}
+
+VOID
+CompleteRequest(
+	_In_ WDFREQUEST Request
+	)
+{
 	NTSTATUS status = STATUS_SUCCESS;
 	BYTE *data = NULL;
 	size_t bytesToWrite = 0;
@@ -407,23 +454,6 @@ kkdrvIoRead(
 
 	if (gPacketQueue.queueLength > 0)
 	{
-		//PLIST_ENTRY entry = gPacketQueue.queue.Flink;
-		//PKKDRV_PACKET packet = CONTAINING_RECORD(entry, KKDRV_PACKET, entry);//((KKDRV_PACKET*)entry)->dataLength;
-		//size_t packetSize = packet->dataLength;
-		//while ((packetsToReadSize + packetSize <= bytesToWrite) 
-		//	&& (packetsToRead < KKDRV_MAX_READ_PACKET_COUNT) 
-		//	&& (gPacketQueue.queueLength > 0))
-		//{
-		//	packets[packetsToRead] = RemoveHeadList(&gPacketQueue.queue);
-
-		//	gPacketQueue.queueLength--;
-		//	packetsToReadSize += packetSize;
-		//	packetsToRead++;
-
-		//	packet = CONTAINING_RECORD(packets[packetsToRead], KKDRV_PACKET, entry);
-		//	packetSize = packet->dataLength;
-		//}
-
 		PLIST_ENTRY entry = RemoveHeadList(&gPacketQueue.queue);
 		PKKDRV_PACKET packet = CONTAINING_RECORD(entry, KKDRV_PACKET, entry);
 		size_t packetSize = packet->dataLength;
