@@ -44,7 +44,6 @@ CalloutClassifyFunction(
 	else
 	{
 		classifyOut->actionType = FWP_ACTION_BLOCK;
-		//classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
 		classifyOut->flags = FWPS_CLASSIFY_OUT_FLAG_ABSORB;
 	}
 

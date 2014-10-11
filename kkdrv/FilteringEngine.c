@@ -8,7 +8,8 @@ NTSTATUS
 StartFilterEngine(
 	_Inout_ HANDLE *engineHandle,
 	_Inout_ UINT32 *calloutID,
-	_Inout_ UINT64 *activeFilter,
+	//_Inout_ UINT64 *activeFilterRange,
+	//_Inout_ UINT64 *activeFilterLocal,
 	_Inout_ WDFDEVICE device
 	)
 {
@@ -55,7 +56,7 @@ StartFilterEngine(
 		goto Exit;
 	}
 
-	*activeFilter = 0;
+	//*activeFilter = 0;
 
 	status = FwpmTransactionCommit(*engineHandle);
 	if (!NT_SUCCESS(status))
@@ -88,7 +89,9 @@ VOID
 StopFilterEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
-	_In_ UINT64 *activeFilter
+	_In_ UINT64 *activeFilterRangeInbound,
+	_In_ UINT64 *activeFilterRangeOutbound,
+	_In_ UINT64 *activeFilterLocal
 	)
 {
 	if (*calloutID)
@@ -97,10 +100,22 @@ StopFilterEngine(
 		*calloutID = 0;
 	}	
 
-	if (*activeFilter)
+	if (*activeFilterRangeInbound)
 	{
-		FwpmFilterDeleteById(*engineHandle, *activeFilter);
-		*activeFilter = 0;
+		FwpmFilterDeleteById(*engineHandle, *activeFilterRangeInbound);
+		*activeFilterRangeInbound = 0;
+	}
+
+	if (*activeFilterRangeOutbound)
+	{
+		FwpmFilterDeleteById(*engineHandle, *activeFilterRangeOutbound);
+		*activeFilterRangeOutbound = 0;
+	}
+
+	if (*activeFilterLocal)
+	{
+		FwpmFilterDeleteById(*engineHandle, *activeFilterLocal);
+		*activeFilterLocal = 0;
 	}
 
 	if (*engineHandle)
@@ -175,15 +190,19 @@ NTSTATUS
 RegisterFilter(
 	_In_ KKDRV_FILTER_DATA *ipRange,
 	_In_ HANDLE engineHandle,
-	_Inout_ UINT64 *activeFilter
+	_Inout_ UINT64 *activeFilterRangeInbound,
+	_Inout_ UINT64 *activeFilterRangeOutbound,
+	_Inout_ UINT64 *activeFilterLocal
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 
 	FWPM_FILTER filterInbound = { 0 };
 	FWPM_FILTER filterOutbound = { 0 };
+	FWPM_FILTER filterLocal = { 0 };
 	FWPM_FILTER_CONDITION filterInboundCondition[1] = { 0 };
 	FWPM_FILTER_CONDITION filterOutboundCondition[1] = { 0 };
+	FWPM_FILTER_CONDITION filterLocalCondition[1] = { 0 };
 	FWP_RANGE filterConditionRange = { 0 };
 
 	BOOLEAN transactionStarted = FALSE;
@@ -202,9 +221,29 @@ RegisterFilter(
 	}
 	transactionStarted = TRUE;
 
-	if (*activeFilter)
+	if (*activeFilterRangeInbound)
 	{
-		FwpmFilterDeleteById(engineHandle, *activeFilter);
+		FwpmFilterDeleteById(engineHandle, *activeFilterRangeInbound);
+		if (!NT_SUCCESS(status))
+		{
+			REPORT_ERROR(FwpmFilterDeleteById, status);
+			goto Exit;
+		}
+	}
+
+	if (*activeFilterRangeOutbound)
+	{
+		FwpmFilterDeleteById(engineHandle, *activeFilterRangeOutbound);
+		if (!NT_SUCCESS(status))
+		{
+			REPORT_ERROR(FwpmFilterDeleteById, status);
+			goto Exit;
+		}
+	}
+
+	if (*activeFilterLocal)
+	{
+		FwpmFilterDeleteById(engineHandle, *activeFilterLocal);
 		if (!NT_SUCCESS(status))
 		{
 			REPORT_ERROR(FwpmFilterDeleteById, status);
@@ -238,7 +277,7 @@ RegisterFilter(
 		engineHandle,
 		&filterOutbound,
 		NULL,
-		activeFilter
+		activeFilterRangeOutbound
 		);
 	if (!NT_SUCCESS(status))
 	{
@@ -247,7 +286,7 @@ RegisterFilter(
 	}
 
 	/*
-	Inbound Filter
+		Inbound Filter
 	*/
 
 	RtlZeroMemory(&filterInbound, sizeof(filterInbound));
@@ -272,13 +311,51 @@ RegisterFilter(
 		engineHandle,
 		&filterInbound,
 		NULL,
-		activeFilter
+		activeFilterRangeInbound
 		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(FwpmFilterAdd(inbound), status);
 		goto Exit;
 	}
+
+	/*
+		Local Filter
+	*/
+	if (ipRange->local != 0)
+	{
+		RtlZeroMemory(&filterLocal, sizeof(filterLocal));
+		filterLocal.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
+		filterLocal.displayData.name = L"kkdrv IPv4 Outbound Filter";
+		filterLocal.displayData.description = L"Filter that checks for packets addressed inside\
+											   	VPN subnetwork.";
+
+		filterLocal.action.type = FWP_ACTION_PERMIT;
+		filterLocal.filterCondition = filterLocalCondition;
+		filterLocal.numFilterConditions = 1;
+		filterLocal.subLayerKey = FWPM_SUBLAYER_UNIVERSAL;
+		filterLocal.weight.type = FWP_EMPTY;
+
+		filterLocalCondition[0].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+		filterLocalCondition[0].matchType = FWP_MATCH_EQUAL;
+		filterLocalCondition[0].conditionValue.type = FWP_UINT32;
+		filterLocalCondition[0].conditionValue.uint32 = ipRange->local;
+
+		status = FwpmFilterAdd(
+			engineHandle,
+			&filterLocal,
+			NULL,
+			activeFilterLocal
+			);
+		if (!NT_SUCCESS(status))
+		{
+			REPORT_ERROR(FwpmFilterAdd(local), status);
+			goto Exit;
+		}
+	}
+	/*
+		Commit
+	*/
 
 	status = FwpmTransactionCommit(engineHandle);
 	if (!NT_SUCCESS(status))
@@ -302,7 +379,9 @@ NTSTATUS
 RestartEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
-	_In_ UINT64 *activeFilter,
+	_In_ UINT64 *activeFilterRangeInbound,
+	_In_ UINT64 *activeFilterRangeOutbound,
+	_In_ UINT64 *activeFilterLocal,
 	_Inout_ WDFDEVICE device
 	)
 {
@@ -311,13 +390,14 @@ RestartEngine(
 	StopFilterEngine(
 		engineHandle,
 		calloutID,
-		activeFilter
+		activeFilterRangeInbound,
+		activeFilterRangeOutbound,
+		activeFilterLocal
 		);
 
 	StartFilterEngine(
 		engineHandle,
 		calloutID,
-		activeFilter,
 		device
 		);
 	if (!NT_SUCCESS(status))
@@ -329,4 +409,3 @@ RestartEngine(
 Exit:
 	return status;
 }
-

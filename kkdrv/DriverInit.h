@@ -51,6 +51,7 @@ typedef struct KKDRV_FILTER_DATA_
 {
 	unsigned __int32 low;
 	unsigned __int32 high;
+	unsigned __int32 local;
 }
 KKDRV_FILTER_DATA;
 
@@ -93,6 +94,7 @@ EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL kkdrvIoDeviceControl;
 EVT_WDF_IO_QUEUE_IO_WRITE kkdrvIoWrite;
 EVT_WDF_IO_QUEUE_IO_READ kkdrvIoRead;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP kkdrvCleanupCallback;
+EVT_WDF_REQUEST_CANCEL kkdrvRequestCancel;
 
 VOID 
 kkVPNUnload(
@@ -123,7 +125,9 @@ extern NDIS_HANDLE gPoolHandle;
 extern HANDLE gFilteringEngineHandle;
 extern HANDLE gInjectionEngineHandle;
 extern WDFREQUEST gPendingRequest;
-extern UINT64 gActiveFilter;
+extern UINT64 gActiveFilterRangeInbound;
+extern UINT64 gActiveFilterRangeOutbound;
+extern UINT64 gActiveFilterLocal;
 extern UINT32 gCalloutID;
 extern KKDRV_QUEUE_DATA gPacketQueue;
 

@@ -10,7 +10,9 @@ DECLARE_CONST_UNICODE_STRING(
 	);
 	
 KKDRV_QUEUE_DATA gPacketQueue;
-UINT64 gActiveFilter;
+UINT64 gActiveFilterRangeInbound;
+UINT64 gActiveFilterRangeOutbound;
+UINT64 gActiveFilterLocal;
 UINT32 gCalloutID;
 WDFREQUEST gPendingRequest;
 HANDLE gFilteringEngineHandle;
@@ -31,7 +33,9 @@ kkVPNUnload(
 	StopFilterEngine(
 		&gFilteringEngineHandle,
 		&gCalloutID,
-		&gActiveFilter
+		&gActiveFilterRangeInbound,
+		&gActiveFilterRangeOutbound,
+		&gActiveFilterLocal
 		);
 
 	NdisFreeNetBufferListPool(gPoolHandle);
@@ -145,7 +149,6 @@ kkdrvDriverDeviceAdd(
 	status = StartFilterEngine(
 		&gFilteringEngineHandle,
 		&gCalloutID,
-		&gActiveFilter,
 		device
 		);
 
@@ -299,16 +302,30 @@ kkdrvIoDeviceControl(
 
 			ClearPacketQueue(&gPacketQueue);
 
-			if (gActiveFilter)
+			if (gActiveFilterRangeInbound)
 			{
-				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilter);
-				gActiveFilter = 0;
+				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilterRangeInbound);
+				gActiveFilterRangeInbound = 0;
+			}
+
+			if (gActiveFilterRangeOutbound)
+			{
+				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilterRangeOutbound);
+				gActiveFilterRangeOutbound = 0;
+			}
+
+			if (gActiveFilterLocal)
+			{
+				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilterLocal);
+				gActiveFilterLocal = 0;
 			}
 			
 			status = RegisterFilter(
 				data,
 				gFilteringEngineHandle,
-				&gActiveFilter
+				&gActiveFilterRangeInbound,
+				&gActiveFilterRangeOutbound,
+				&gActiveFilterLocal
 				);
 			if (!NT_SUCCESS(status))
 			{
@@ -323,7 +340,9 @@ kkdrvIoDeviceControl(
 			status = RestartEngine(
 				&gFilteringEngineHandle,
 				&gCalloutID,
-				&gActiveFilter,
+				&gActiveFilterRangeInbound,
+				&gActiveFilterRangeOutbound,
+				&gActiveFilterLocal,
 				device
 				);
 			break;
@@ -410,6 +429,8 @@ kkdrvIoRead(
 		&lockHandle
 		);
 
+	WdfRequestMarkCancelable(Request, kkdrvRequestCancel);
+
 	if (gPacketQueue.queueLength > 0)
 	{
 		CompleteRequest(Request);
@@ -418,6 +439,13 @@ kkdrvIoRead(
 	{
 		gPendingRequest = Request;
 	}
+}
+
+VOID kkdrvRequestCancel(
+	_In_  WDFREQUEST Request
+	)
+{
+	WdfRequestCompleteWithInformation(Request, STATUS_CANCELLED, 0);
 }
 
 VOID

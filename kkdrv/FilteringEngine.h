@@ -7,7 +7,6 @@ NTSTATUS
 StartFilterEngine(
 	_Inout_ HANDLE *engineHandle,
 	_Inout_ UINT32 *calloutID,
-	_Inout_ UINT64 *activeFilter,
 	_Inout_ WDFDEVICE device
 	);
 
@@ -18,7 +17,9 @@ VOID
 StopFilterEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
-	_In_ UINT64 *activeFilter
+	_In_ UINT64 *activeFilterRangeInbound,
+	_In_ UINT64 *activeFilterRangeOutbound,
+	_In_ UINT64 *activeFilterLocal
 	);
 
 NTSTATUS 
@@ -32,13 +33,17 @@ NTSTATUS
 RegisterFilter(
 	_In_ KKDRV_FILTER_DATA *ipRange,
 	_In_ HANDLE engineHandle,
-	_Inout_ UINT64 *activeFilter
+	_Inout_ UINT64 *activeFilterRangeInbound,
+	_Inout_ UINT64 *activeFilterRangeOutbound,
+	_Inout_ UINT64 *activeFilterLocal
 	);
 
 NTSTATUS RestartEngine(
 	_In_ HANDLE *engineHandle,
 	_In_ UINT32 *calloutID,
-	_In_ UINT64 *activeFilter,
+	_In_ UINT64 *activeFilterRangeInbound,
+	_In_ UINT64 *activeFilterRangeOutbound,
+	_In_ UINT64 *activeFilterLocal,
 	_Inout_ WDFDEVICE device
 	);
 
