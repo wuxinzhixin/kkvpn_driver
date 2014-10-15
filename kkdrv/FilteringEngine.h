@@ -22,6 +22,14 @@ StopFilterEngine(
 	_In_ UINT64 *activeFilterLocal
 	);
 
+NTSTATUS
+ClearFilters(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT64 *activeFilterRangeInbound,
+	_In_ UINT64 *activeFilterRangeOutbound,
+	_In_ UINT64 *activeFilterLocal
+	);
+
 NTSTATUS 
 RegisterCallout(
 	_Inout_ void* deviceObject,

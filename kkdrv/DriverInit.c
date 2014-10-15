@@ -276,23 +276,22 @@ kkdrvIoDeviceControl(
 	_In_  ULONG IoControlCode
 	)
 {
+	UNREFERENCED_PARAMETER(Queue);
 	UNREFERENCED_PARAMETER(OutputBufferLength);
 	UNREFERENCED_PARAMETER(InputBufferLength);
 
 	NTSTATUS status = STATUS_SUCCESS;
-	WDFDEVICE device = WdfIoQueueGetDevice(Queue);
 	KKDRV_FILTER_DATA *data = NULL;
-	size_t bytes_read = 0;
-	size_t bytes_returned = 0;
+	size_t bytesRead = 0;
 
 	switch (IoControlCode) 
 	{
-		case IOCTL_REGISTER:
+		case IOCTL_REGISTER:			
 			status = WdfRequestRetrieveInputBuffer(
 				Request,
 				1,
 				(void*)&data,
-				&bytes_read
+				&bytesRead
 				);
 			if (!NT_SUCCESS(status))
 			{
@@ -300,26 +299,15 @@ kkdrvIoDeviceControl(
 				goto Complete;
 			}
 
+			ClearFilters(
+				gFilteringEngineHandle,
+				&gActiveFilterRangeInbound,
+				&gActiveFilterRangeOutbound,
+				&gActiveFilterLocal
+				);
+			
 			ClearPacketQueue(&gPacketQueue);
 
-			if (gActiveFilterRangeInbound)
-			{
-				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilterRangeInbound);
-				gActiveFilterRangeInbound = 0;
-			}
-
-			if (gActiveFilterRangeOutbound)
-			{
-				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilterRangeOutbound);
-				gActiveFilterRangeOutbound = 0;
-			}
-
-			if (gActiveFilterLocal)
-			{
-				FwpmFilterDeleteById(gFilteringEngineHandle, gActiveFilterLocal);
-				gActiveFilterLocal = 0;
-			}
-			
 			status = RegisterFilter(
 				data,
 				gFilteringEngineHandle,
@@ -335,16 +323,14 @@ kkdrvIoDeviceControl(
 			break;
 
 		case IOCTL_RESTART:
-			bytes_returned = 0;
-
-			status = RestartEngine(
-				&gFilteringEngineHandle,
-				&gCalloutID,
+			ClearFilters(
+				gFilteringEngineHandle,
 				&gActiveFilterRangeInbound,
 				&gActiveFilterRangeOutbound,
-				&gActiveFilterLocal,
-				device
+				&gActiveFilterLocal
 				);
+
+			ClearPacketQueue(&gPacketQueue);
 			break;
 
 		default:
@@ -353,7 +339,7 @@ kkdrvIoDeviceControl(
 	}
 
 Complete:
-	WdfRequestCompleteWithInformation(Request, status, bytes_returned);
+	WdfRequestCompleteWithInformation(Request, status, 0);
 }
 
 VOID 
@@ -445,6 +431,7 @@ VOID kkdrvRequestCancel(
 	_In_  WDFREQUEST Request
 	)
 {
+	ClearPacketQueue(&gPacketQueue);
 	WdfRequestCompleteWithInformation(Request, STATUS_CANCELLED, 0);
 }
 
@@ -462,6 +449,8 @@ CompleteRequest(
 	KLOCK_QUEUE_HANDLE lockHandle;
 	PKKDRV_PACKET packet = NULL;
 	PLIST_ENTRY packets[KKDRV_MAX_READ_PACKET_COUNT];
+
+	WdfRequestUnmarkCancelable(Request);
 
 	status = WdfRequestRetrieveOutputBuffer(
 		Request,

@@ -8,8 +8,6 @@ NTSTATUS
 StartFilterEngine(
 	_Inout_ HANDLE *engineHandle,
 	_Inout_ UINT32 *calloutID,
-	//_Inout_ UINT64 *activeFilterRange,
-	//_Inout_ UINT64 *activeFilterLocal,
 	_Inout_ WDFDEVICE device
 	)
 {
@@ -94,11 +92,47 @@ StopFilterEngine(
 	_In_ UINT64 *activeFilterLocal
 	)
 {
+	ClearFilters(
+		engineHandle,
+		activeFilterRangeInbound,
+		activeFilterRangeOutbound,
+		activeFilterLocal
+		);
+
 	if (*calloutID)
 	{
+		if (*engineHandle)
+		{
+			FwpmCalloutDeleteById(*engineHandle, *calloutID);
+		}
 		FwpsCalloutUnregisterById(*calloutID);
 		*calloutID = 0;
 	}	
+
+	if (*engineHandle)
+	{
+		FwpmEngineClose(*engineHandle);
+		*engineHandle = NULL;
+	}
+}
+
+NTSTATUS
+ClearFilters(
+	_In_ HANDLE *engineHandle,
+	_In_ UINT64 *activeFilterRangeInbound,
+	_In_ UINT64 *activeFilterRangeOutbound,
+	_In_ UINT64 *activeFilterLocal
+	)
+{
+	BOOL transactionStarted = FALSE;
+
+	NTSTATUS status = FwpmTransactionBegin(engineHandle, 0);
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(FwpmTransactionBegin, status);
+		goto Exit;
+	}
+	transactionStarted = TRUE;
 
 	if (*activeFilterRangeInbound)
 	{
@@ -118,11 +152,22 @@ StopFilterEngine(
 		*activeFilterLocal = 0;
 	}
 
-	if (*engineHandle)
+	status = FwpmTransactionCommit(engineHandle);
+	if (!NT_SUCCESS(status))
 	{
-		FwpmEngineClose(*engineHandle);
-		*engineHandle = NULL;
+		REPORT_ERROR(FwpmTransactionCommit, status);
+		goto Exit;
 	}
+	transactionStarted = FALSE;
+
+Exit:
+
+	if (transactionStarted)
+	{
+		FwpmTransactionAbort(engineHandle);
+	}
+
+	return status;
 }
 
 NTSTATUS
@@ -143,6 +188,13 @@ RegisterCallout(
 	sCallout.calloutKey = GUID_KKDRV_CALLOUT;
 	sCallout.classifyFn = CalloutClassifyFunction;
 	sCallout.notifyFn = CalloutNotifyFunction;
+
+	FwpmCalloutDeleteByKey(
+		engineHandle,
+		&GUID_KKDRV_CALLOUT
+		);
+
+	FwpsCalloutUnregisterByKey(&GUID_KKDRV_CALLOUT);
 
 	status = FwpsCalloutRegister(
 		deviceObject,
@@ -171,6 +223,7 @@ RegisterCallout(
 		);
 	if (!NT_SUCCESS(status))
 	{
+		REPORT_ERROR(FwpmCalloutAdd, status);
 		goto Exit;
 	}
 
@@ -220,36 +273,6 @@ RegisterFilter(
 		goto Exit;
 	}
 	transactionStarted = TRUE;
-
-	if (*activeFilterRangeInbound)
-	{
-		FwpmFilterDeleteById(engineHandle, *activeFilterRangeInbound);
-		if (!NT_SUCCESS(status))
-		{
-			REPORT_ERROR(FwpmFilterDeleteById, status);
-			goto Exit;
-		}
-	}
-
-	if (*activeFilterRangeOutbound)
-	{
-		FwpmFilterDeleteById(engineHandle, *activeFilterRangeOutbound);
-		if (!NT_SUCCESS(status))
-		{
-			REPORT_ERROR(FwpmFilterDeleteById, status);
-			goto Exit;
-		}
-	}
-
-	if (*activeFilterLocal)
-	{
-		FwpmFilterDeleteById(engineHandle, *activeFilterLocal);
-		if (!NT_SUCCESS(status))
-		{
-			REPORT_ERROR(FwpmFilterDeleteById, status);
-			goto Exit;
-		}
-	}
 
 	/*	
 		Outbound Filter
@@ -322,6 +345,7 @@ RegisterFilter(
 	/*
 		Local Filter
 	*/
+	UNREFERENCED_PARAMETER(activeFilterLocal);
 	if (ipRange->local != 0)
 	{
 		RtlZeroMemory(&filterLocal, sizeof(filterLocal));
