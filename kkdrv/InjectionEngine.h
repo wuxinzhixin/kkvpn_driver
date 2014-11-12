@@ -55,4 +55,10 @@ InjectComplete(
 	_In_     BOOLEAN dispatchLevel
 	);
 
+__inline
+VOID
+InvertBytes(
+	USHORT *data
+	);
+
 #endif // !_INJECTIONENGINE_H_

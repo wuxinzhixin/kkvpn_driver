@@ -8,6 +8,8 @@ DECLARE_CONST_UNICODE_STRING(
 	SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
 	L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
 	);
+
+#define PACKET_IPV4_DESTINATION_OFFSET 0x10
 	
 KKDRV_QUEUE_DATA gPacketQueue;
 UINT64 gActiveFilterRangeInbound;
@@ -469,11 +471,21 @@ CompleteRequest(
 		&lockHandle
 		);
 
+	/*
+		Nastêpuj¹cy blok ³¹czy kolejne pakiety w kolejce, aby sprawniej przekazywaæ dane do klienta. Blok jest zamykany w stuacji, gdy:
+		1. nie ma wiêcej pakietów w buforze
+		2. rozmiar bloku przekroczy³ limit KKDRV_MAX_READ_PACKET_COUNT
+		3. rozmiar bloku przekroczy³ limit rozmiaru bufora wyjœciowego
+		4. kolejny napotkany pakiet jest adresowany do innego hosta, ni¿ poprzednie
+	*/
+
 	if (gPacketQueue.queueLength > 0)
 	{
 		PLIST_ENTRY entry = RemoveHeadList(&gPacketQueue.queue);
 		PKKDRV_PACKET packet = CONTAINING_RECORD(entry, KKDRV_PACKET, entry);
 		size_t packetSize = packet->dataLength;
+		CHAR *currentDestinationAddr = (CHAR*)packet + PACKET_IPV4_DESTINATION_OFFSET;
+		UINT currentDestination = *((UINT*)currentDestinationAddr);
 		while ((packetsToReadSize + packetSize <= bytesToWrite)
 			&& (packetsToRead < KKDRV_MAX_READ_PACKET_COUNT)
 			&& (gPacketQueue.queueLength > 0))
@@ -487,6 +499,12 @@ CompleteRequest(
 			entry = RemoveHeadList(&gPacketQueue.queue);
 			packet = CONTAINING_RECORD(entry, KKDRV_PACKET, entry);
 			packetSize = packet->dataLength;
+			if (*((UINT*)packet + PACKET_IPV4_DESTINATION_OFFSET) != currentDestination)
+			{
+				break;
+			}
+			currentDestinationAddr = (CHAR*)packet + PACKET_IPV4_DESTINATION_OFFSET;
+			currentDestination = *((UINT*)currentDestinationAddr);
 		}
 
 		if (packetsToRead != KKDRV_MAX_READ_PACKET_COUNT && gPacketQueue.queueLength > 0)

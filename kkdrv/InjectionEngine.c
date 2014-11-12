@@ -1,5 +1,7 @@
 #include "InjectionEngine.h"
 
+#define PACKET_IPV4_LENGTH_OFFSET (ULONG)0x2
+
 NTSTATUS 
 StartInjectionEngine(
 	_In_ HANDLE *engineHandle
@@ -53,48 +55,46 @@ InjectPacketReceive(
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
-
 	PNET_BUFFER_LIST nbl;
-	
-	status = InsertDataToNBL(
-		data,
-		length,
-		&nbl
-		);
-	if (!NT_SUCCESS(status))
+	ULONG offset = 0;
+
+	while (offset < length)
 	{
-		REPORT_ERROR(InsertDataToNBL, status);
-		return status;
+		CHAR *currentAddr = (CHAR*)data + offset;
+		USHORT packetLength = *((USHORT*)(currentAddr + PACKET_IPV4_LENGTH_OFFSET));
+		InvertBytes(&packetLength);
+
+		status = InsertDataToNBL(
+			(PVOID)currentAddr,
+			packetLength,
+			&nbl
+			);
+		if (!NT_SUCCESS(status))
+		{
+			REPORT_ERROR(InsertDataToNBL, status);
+			goto Exit;
+		}
+
+		status = FwpsInjectNetworkSendAsync(
+			engineHandle,
+			NULL,
+			0,
+			UNSPECIFIED_COMPARTMENT_ID,
+			nbl,
+			InjectComplete,
+			NULL
+			);
+		if (!NT_SUCCESS(status))
+		{
+			REPORT_ERROR(FwpsInjectNetworkSendAsync, status);
+			goto Exit;
+		}
+
+		offset += (ULONG)packetLength;
 	}
 
-	status = FwpsInjectNetworkSendAsync(
-		engineHandle,
-		NULL,
-		0,
-		UNSPECIFIED_COMPARTMENT_ID,
-		nbl,
-		InjectComplete,
-		*request
-		);
-
-	/*status = FwpsInjectNetworkReceiveAsync(
-		engineHandle,
-		NULL,
-		0,
-		UNSPECIFIED_COMPARTMENT_ID,
-		10,
-		0,
-		nbl,
-		InjectComplete,
-		*request
-		);*/
-		
-	if (!NT_SUCCESS(status))
-	{
-		REPORT_ERROR(FwpsInjectNetworkSendAsync, status);
-		return status;
-	}
-
+Exit:
+	WdfRequestCompleteWithInformation(*request, status, length);
 	return status;
 }
 
@@ -186,7 +186,7 @@ InjectComplete(
 	)
 {
 	UNREFERENCED_PARAMETER(dispatchLevel);
-	WDFREQUEST request = (WDFREQUEST)context;
+	UNREFERENCED_PARAMETER(context);
 
 	NET_BUFFER *nb = NET_BUFFER_LIST_FIRST_NB(nbl);
 	PMDL mdl = NET_BUFFER_FIRST_MDL(nb);
@@ -195,6 +195,26 @@ InjectComplete(
 	FwpsFreeNetBufferList(nbl);
 	IoFreeMdl(mdl);
 	ExFreePoolWithTag(buffer, KKDRV_TAG);
-
-	WdfRequestCompleteWithInformation(request, NET_BUFFER_LIST_STATUS(nbl), NET_BUFFER_DATA_LENGTH(nb));
 }
+
+__inline
+VOID
+InvertBytes(
+	USHORT *data
+	)
+{
+	USHORT temp = *data;
+	*data = (temp << 8) + (temp >> 8);
+}
+
+/*status = FwpsInjectNetworkReceiveAsync(
+engineHandle,
+NULL,
+0,
+UNSPECIFIED_COMPARTMENT_ID,
+10,
+0,
+nbl,
+InjectComplete,
+*request
+);*/

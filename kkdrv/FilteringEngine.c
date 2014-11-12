@@ -350,7 +350,7 @@ RegisterFilter(
 	{
 		RtlZeroMemory(&filterLocal, sizeof(filterLocal));
 		filterLocal.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
-		filterLocal.displayData.name = L"kkdrv IPv4 Outbound Filter";
+		filterLocal.displayData.name = L"kkdrv IPv4 Outbound Filter (Local)";
 		filterLocal.displayData.description = L"Filter that checks for packets addressed inside\
 											   	VPN subnetwork.";
 
