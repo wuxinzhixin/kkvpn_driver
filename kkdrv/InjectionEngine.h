@@ -38,7 +38,7 @@ InjectPacketReceive(
 	_In_ HANDLE *engineHandle,
 	_In_ PVOID data,
 	_In_ size_t length,
-	_In_ WDFREQUEST *request
+	_Out_ UINT *packetsInjected
 	);
 
 NTSTATUS

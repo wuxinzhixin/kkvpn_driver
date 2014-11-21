@@ -51,12 +51,13 @@ InjectPacketReceive(
 	_In_ HANDLE *engineHandle,
 	_In_ PVOID data,
 	_In_ size_t length,
-	_In_ WDFREQUEST *request
+	_Out_ UINT *packetsInjected
 	)
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	PNET_BUFFER_LIST nbl;
 	ULONG offset = 0;
+	UINT packetCount = 0;
 
 	while (offset < length)
 	{
@@ -91,10 +92,12 @@ InjectPacketReceive(
 		}
 
 		offset += (ULONG)packetLength;
+		packetCount++;
 	}
 
+	*packetsInjected = packetCount;
+
 Exit:
-	WdfRequestCompleteWithInformation(*request, status, length);
 	return status;
 }
 

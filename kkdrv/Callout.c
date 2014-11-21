@@ -20,6 +20,9 @@ CalloutClassifyFunction(
 	UNREFERENCED_PARAMETER(inMetaValues);
 	UNREFERENCED_PARAMETER(flowContext);
 
+	WDFREQUEST request = gPendingRequest;
+	gPendingRequest = NULL;
+
 	NTSTATUS status;
 
 	if (layerData == NULL)
@@ -60,10 +63,9 @@ CalloutClassifyFunction(
 			REPORT_ERROR(InsertNBL, status);
 		}	
 
-		if (gPendingRequest != NULL)
+		if (request != NULL)
 		{
-			CompleteRequest(gPendingRequest);
-			gPendingRequest = NULL;
+			CompleteRequest(request);
 		}
 	}
 		
