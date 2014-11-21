@@ -325,7 +325,6 @@ kkdrvIoDeviceControl(
 			break;
 
 		case IOCTL_RESTART:
-			status = STATUS_SUCCESS;
 			ClearFilters(
 				gFilteringEngineHandle,
 				&gActiveFilterRangeInbound,
@@ -363,37 +362,35 @@ kkdrvIoWrite(
 	NTSTATUS status = STATUS_SUCCESS;
 	PVOID data = NULL;
 	size_t bytesRead = 0;
-	UINT packetsInjected = 0;
 
 	UNREFERENCED_PARAMETER(Queue);
 	UNREFERENCED_PARAMETER(Length);
 
 	status = WdfRequestRetrieveInputBuffer(
 		Request,
-		0,
+		1,
 		&data,
 		&bytesRead
 		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(WdfRequestRetrieveInputBuffer, status);
-		goto Exit;
+		WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
+		return;
 	}
 
-	status = InjectPacketReceive(
+	InjectPacketReceive(
 		gInjectionEngineHandle,
 		data,
 		bytesRead,
-		&packetsInjected
+		&Request
 		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(InjectPacketReceive, status);
-		goto Exit;
+		WdfRequestCompleteWithInformation(Request, status, (ULONG_PTR)0);
+		return;
 	}
-
-Exit:
-	WdfRequestCompleteWithInformation(Request, status, (UINT)packetsInjected);
 }
 
 VOID
@@ -436,11 +433,6 @@ VOID kkdrvRequestCancel(
 	_In_  WDFREQUEST Request
 	)
 {
-	if (gPendingRequest == Request)
-	{
-		DbgPrint(_DRVNAME "gPendingRequest cleared.\n");
-		gPendingRequest = NULL;
-	}
 	ClearPacketQueue(&gPacketQueue);
 	WdfRequestCompleteWithInformation(Request, STATUS_CANCELLED, 0);
 }
@@ -460,11 +452,7 @@ CompleteRequest(
 	PKKDRV_PACKET packet = NULL;
 	PLIST_ENTRY packets[KKDRV_MAX_READ_PACKET_COUNT];
 
-	status = WdfRequestUnmarkCancelable(Request);
-	if (status == STATUS_CANCELLED)
-	{
-		return;
-	}
+	WdfRequestUnmarkCancelable(Request);
 
 	status = WdfRequestRetrieveOutputBuffer(
 		Request,
@@ -511,12 +499,11 @@ CompleteRequest(
 			entry = RemoveHeadList(&gPacketQueue.queue);
 			packet = CONTAINING_RECORD(entry, KKDRV_PACKET, entry);
 			packetSize = packet->dataLength;
-
-			currentDestinationAddr = (CHAR*)packet + PACKET_IPV4_DESTINATION_OFFSET;
-			if (*((UINT*)currentDestinationAddr) != currentDestination)
+			if (*((UINT*)packet + PACKET_IPV4_DESTINATION_OFFSET) != currentDestination)
 			{
 				break;
 			}
+			currentDestinationAddr = (CHAR*)packet + PACKET_IPV4_DESTINATION_OFFSET;
 			currentDestination = *((UINT*)currentDestinationAddr);
 		}
 
