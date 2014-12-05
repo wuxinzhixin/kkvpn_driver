@@ -160,9 +160,9 @@ Exit:
 
 	if (!NT_SUCCESS(status))
 	{
-		if (nbl)
+		if (nblOut)
 		{
-			FwpsFreeNetBufferList(*nbl);
+			FwpsFreeNetBufferList(nblOut);
 		}
 		if (mdl)
 		{

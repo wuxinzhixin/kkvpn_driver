@@ -1,7 +1,7 @@
 #ifndef _USERMODEBUFFERHANDLER_H_
 #define _USERMODEBUFFERHANDLER_H_
 
-#include "DriverInit.h"
+#include "DriverMain.h"
 
 extern HANDLE gWorkerThreadHandle;
 extern PVOID gWorkerThreadObj;

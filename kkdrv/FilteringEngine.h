@@ -1,7 +1,7 @@
 #ifndef _FILTERINGENGINE_H_
 #define _FILTERINGENGINE_H_
 
-#include "DriverInit.h"
+#include "DriverMain.h"
 
 NTSTATUS 
 StartFilterEngine(

@@ -1,7 +1,7 @@
 #ifndef _INJECTIONENGINE_H_
 #define _INJECTIONENGINE_H_
 
-#include "DriverInit.h"
+#include "DriverMain.h"
 
 #pragma warning(push)
 #pragma warning(disable:4214)       // bit field types other than int

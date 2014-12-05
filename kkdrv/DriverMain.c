@@ -1,13 +1,13 @@
-#include "DriverInit.h"
+#include "DriverMain.h"
 
 #include "FilteringEngine.h"
 #include "InjectionEngine.h"
 #include "UserModeBufferHandler.h"
 
-DECLARE_CONST_UNICODE_STRING(
-	SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
-	L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
-	);
+//DECLARE_CONST_UNICODE_STRING(
+//	SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R,
+//	L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)"
+//	);
 
 #define PACKET_IPV4_DESTINATION_OFFSET 0x10
 	
@@ -22,12 +22,18 @@ HANDLE gInjectionEngineHandle;
 NDIS_HANDLE gPoolHandle;
 
 VOID
-kkVPNUnload(
+kkdrvUnload(
 	_In_ PDRIVER_OBJECT pDriverObject
-	)
+)
 {
 	UNREFERENCED_PARAMETER(pDriverObject);
 
+	EnginesCleanup();
+}
+	
+VOID
+EnginesCleanup()
+{
 	StopInjectionEngine(
 		&gInjectionEngineHandle
 		);
@@ -45,77 +51,67 @@ kkVPNUnload(
 
 NTSTATUS
 DriverEntry(
-	_In_ PDRIVER_OBJECT  pDriverObject,
-	_In_ PUNICODE_STRING pRegistryPath
-	)
+_In_ PDRIVER_OBJECT  pDriverObject,
+_In_ PUNICODE_STRING pRegistryPath
+)
 {
 	NTSTATUS status;
 	WDFDRIVER driver;
+	WDFDEVICE device;
 	WDF_DRIVER_CONFIG config;
-	
-	WDF_DRIVER_CONFIG_INIT(&config, kkdrvDriverDeviceAdd);
+	//WDF_FILEOBJECT_CONFIG fileConfig;
+	PWDFDEVICE_INIT deviceInit;
+	WDF_OBJECT_ATTRIBUTES deviceAttributes = { 0 };
+
+	WDF_DRIVER_CONFIG_INIT(&config, WDF_NO_EVENT_CALLBACK); // kkdrvDriverDeviceAdd);
+	config.DriverInitFlags |= WdfDriverInitNonPnpDriver;
 
 	status = WdfDriverCreate(
-			pDriverObject, 
-			pRegistryPath, 
-			WDF_NO_OBJECT_ATTRIBUTES, 
-			&config, 
-			&driver
-			);
-
+		pDriverObject,
+		pRegistryPath,
+		WDF_NO_OBJECT_ATTRIBUTES,
+		&config,
+		&driver
+		);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(WdfDriverCreate, status);
 		goto Exit;
 	}
 
-	pDriverObject->DriverUnload = kkVPNUnload;
+	pDriverObject->DriverUnload = kkdrvUnload;
 
-	NET_BUFFER_LIST_POOL_PARAMETERS poolParams;
+	// Device init start
 
-	RtlZeroMemory(&poolParams, sizeof(poolParams));
-	poolParams.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
-	poolParams.Header.Revision = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
-	poolParams.Header.Size = sizeof(poolParams);
-	poolParams.fAllocateNetBuffer = TRUE;
-	poolParams.PoolTag = KKDRV_TAG;
-	poolParams.DataSize = 0;
-	gPoolHandle = NdisAllocateNetBufferListPool(NULL, &poolParams);
-	if (gPoolHandle == NULL)
+	deviceInit = WdfControlDeviceInitAllocate(driver,
+		&SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
+	if (deviceInit == NULL)
 	{
-		status = STATUS_INSUFFICIENT_RESOURCES;
-		REPORT_ERROR(NdisAllocateNetBufferListPool, status);
+		REPORT_ERROR(WdfControlDeviceInitAllocate, status);
 		goto Exit;
 	}
+	WdfDeviceInitSetDeviceType(deviceInit, FILE_DEVICE_NETWORK);
+	WdfDeviceInitSetCharacteristics(deviceInit, FILE_DEVICE_SECURE_OPEN, TRUE);
 
-	InitializePacketQueue(&gPacketQueue);
+	DECLARE_CONST_UNICODE_STRING(deviceName, DEVICE_NAME);
+	status = WdfDeviceInitAssignName(deviceInit, &deviceName);
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(WdfDeviceInitAssignName, status);
+		goto Exit;
+	}
+	//WDF_FILEOBJECT_CONFIG_INIT(&fileConfig, kkdrvDeviceFileCreate, NULL, kkdrvFileCleanup);
+	//WdfDeviceInitSetFileObjectConfig(deviceInit, &fileConfig, WDF_NO_OBJECT_ATTRIBUTES);
 
-Exit:
-	return status;
-}
-
-NTSTATUS 
-kkdrvDriverDeviceAdd(
-	_In_     WDFDRIVER Driver,
-	_Inout_  PWDFDEVICE_INIT DeviceInit
-	)
-{
-	UNREFERENCED_PARAMETER(Driver);
-
-	NTSTATUS status = STATUS_SUCCESS;
-	WDFDEVICE device;
-	WDF_OBJECT_ATTRIBUTES deviceAttributes = { 0 };
 	WDF_OBJECT_ATTRIBUTES_INIT(&deviceAttributes);
-
 	deviceAttributes.EvtCleanupCallback = kkdrvCleanupCallback;
+	deviceAttributes.ExecutionLevel = WdfExecutionLevelPassive;
+	deviceAttributes.SynchronizationScope = WdfSynchronizationScopeQueue;
 
-	WdfDeviceInitSetDeviceType(DeviceInit, FILE_DEVICE_NETWORK);
-	WdfDeviceInitSetCharacteristics(DeviceInit, FILE_DEVICE_SECURE_OPEN, TRUE);
-	status = WdfDeviceCreate(&DeviceInit, &deviceAttributes, &device);
+	status = WdfDeviceCreate(&deviceInit, &deviceAttributes, &device);
 	if (!NT_SUCCESS(status))
 	{
 		REPORT_ERROR(WdfDeviceCreate, status);
-		WdfDeviceInitFree(DeviceInit);
 		goto Exit;
 	}
 
@@ -136,27 +132,49 @@ kkdrvDriverDeviceAdd(
 		goto Exit;
 	}
 
-	/*status = WdfDeviceCreateDeviceInterface(
-		device,
-		(LPGUID)&GUID_KKDRV_INTERFACE,
-		NULL
-		);
-	if (!NT_SUCCESS(status)) {
-		REPORT_ERROR(WdfDeviceCreateDeviceInterface, status);
-		goto Exit;
-	}*/
-
 	WdfControlFinishInitializing(device);
+
+	// Device init end
+
+	NET_BUFFER_LIST_POOL_PARAMETERS poolParams;
+
+	RtlZeroMemory(&poolParams, sizeof(poolParams));
+	poolParams.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+	poolParams.Header.Revision = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+	poolParams.Header.Size = sizeof(poolParams);
+	poolParams.fAllocateNetBuffer = TRUE;
+	poolParams.PoolTag = KKDRV_TAG;
+	poolParams.DataSize = 0;
+	gPoolHandle = NdisAllocateNetBufferListPool(NULL, &poolParams);
+	if (gPoolHandle == NULL)
+	{
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		REPORT_ERROR(NdisAllocateNetBufferListPool, status);
+		goto Exit;
+	}
+
+	InitializePacketQueue(&gPacketQueue);
 
 	status = StartFilterEngine(
 		&gFilteringEngineHandle,
 		&gCalloutID,
 		device
 		);
-
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(StartFilterEngine, status);
+		goto Exit;
+	}
+	
 	status = StartInjectionEngine(
 		&gInjectionEngineHandle
 		);
+	if (!NT_SUCCESS(status))
+	{
+		REPORT_ERROR(StartInjectionEngine, status);
+		goto Exit;
+	}
+	
 
 Exit:
 	return status;
@@ -198,6 +216,8 @@ CreateQueue(
 	NTSTATUS status = STATUS_SUCCESS;
 	WDF_IO_QUEUE_CONFIG ioWriteQueueConfig;
 	WDF_IO_QUEUE_CONFIG ioReadQueueConfig;
+	WDF_OBJECT_ATTRIBUTES ioWriteQueueAttributes = { 0 };
+	WDF_OBJECT_ATTRIBUTES ioReadQueueAttributes = { 0 };
 
 	WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
 		&ioWriteQueueConfig,
@@ -208,10 +228,13 @@ CreateQueue(
 	ioWriteQueueConfig.EvtIoDeviceControl = kkdrvIoDeviceControl;
 	ioWriteQueueConfig.EvtIoWrite = kkdrvIoWrite;
 
+	WDF_OBJECT_ATTRIBUTES_INIT(&ioWriteQueueAttributes);
+	ioWriteQueueAttributes.SynchronizationScope = WdfSynchronizationScopeQueue;
+
 	status = WdfIoQueueCreate(
 		*hDevice,
 		&ioWriteQueueConfig,
-		WDF_NO_OBJECT_ATTRIBUTES,
+		&ioWriteQueueAttributes,
 		&writeQueue
 		);
 	if (!NT_SUCCESS(status)) 
@@ -228,10 +251,13 @@ CreateQueue(
 	ioReadQueueConfig.PowerManaged = FALSE;
 	ioReadQueueConfig.EvtIoRead = kkdrvIoRead;
 
+	WDF_OBJECT_ATTRIBUTES_INIT(&ioReadQueueAttributes);
+	ioReadQueueAttributes.SynchronizationScope = WdfSynchronizationScopeQueue;
+
 	status = WdfIoQueueCreate(
 		*hDevice,
 		&ioReadQueueConfig,
-		WDF_NO_OBJECT_ATTRIBUTES,
+		&ioReadQueueAttributes,
 		&readQueue
 		);
 	if (!NT_SUCCESS(status)) 
@@ -433,6 +459,7 @@ VOID kkdrvRequestCancel(
 	_In_  WDFREQUEST Request
 	)
 {
+	gPendingRequest = NULL;
 	ClearPacketQueue(&gPacketQueue);
 	WdfRequestCompleteWithInformation(Request, STATUS_CANCELLED, 0);
 }
@@ -452,7 +479,7 @@ CompleteRequest(
 	PKKDRV_PACKET packet = NULL;
 	PLIST_ENTRY packets[KKDRV_MAX_READ_PACKET_COUNT];
 
-	WdfRequestUnmarkCancelable(Request);
+	status = WdfRequestUnmarkCancelable(Request);
 
 	status = WdfRequestRetrieveOutputBuffer(
 		Request,
@@ -499,11 +526,12 @@ CompleteRequest(
 			entry = RemoveHeadList(&gPacketQueue.queue);
 			packet = CONTAINING_RECORD(entry, KKDRV_PACKET, entry);
 			packetSize = packet->dataLength;
-			if (*((UINT*)packet + PACKET_IPV4_DESTINATION_OFFSET) != currentDestination)
+
+			currentDestinationAddr = (CHAR*)packet + PACKET_IPV4_DESTINATION_OFFSET;
+			if (*((UINT*)currentDestinationAddr) != currentDestination)
 			{
 				break;
 			}
-			currentDestinationAddr = (CHAR*)packet + PACKET_IPV4_DESTINATION_OFFSET;
 			currentDestination = *((UINT*)currentDestinationAddr);
 		}
 

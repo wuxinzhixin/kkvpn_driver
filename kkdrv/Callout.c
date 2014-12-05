@@ -1,6 +1,6 @@
 #include "Callout.h"
 
-#include "DriverInit.h"
+#include "DriverMain.h"
 #include "UserModeBufferHandler.h"
 
 void NTAPI 
@@ -66,7 +66,6 @@ CalloutClassifyFunction(
 			gPendingRequest = NULL;
 		}
 	}
-		
 }
 
 NTSTATUS NTAPI 

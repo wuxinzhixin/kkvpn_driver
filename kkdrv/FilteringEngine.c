@@ -1,6 +1,6 @@
 #include "FilteringEngine.h"
 
-#include "DriverInit.h"
+#include "DriverMain.h"
 #include "Callout.h"
 #include "UserModeBufferHandler.h"
 
@@ -36,7 +36,7 @@ StartFilterEngine(
 	status = FwpmTransactionBegin(*engineHandle, 0);
 	if (!NT_SUCCESS(status))
 	{
-		REPORT_ERROR(FwpmTransactionBegin, status);
+		REPORT_ERROR(StartFilterEngine->FwpmTransactionBegin, status);
 		goto Exit;
 	}
 	transactionStarted = TRUE;
@@ -53,8 +53,6 @@ StartFilterEngine(
 		REPORT_ERROR(RegisterCallout, status);
 		goto Exit;
 	}
-
-	//*activeFilter = 0;
 
 	status = FwpmTransactionCommit(*engineHandle);
 	if (!NT_SUCCESS(status))
@@ -129,26 +127,26 @@ ClearFilters(
 	NTSTATUS status = FwpmTransactionBegin(engineHandle, 0);
 	if (!NT_SUCCESS(status))
 	{
-		REPORT_ERROR(FwpmTransactionBegin, status);
+		REPORT_ERROR(ClearFilters->FwpmTransactionBegin, status);
 		goto Exit;
 	}
 	transactionStarted = TRUE;
 
 	if (*activeFilterRangeInbound)
 	{
-		FwpmFilterDeleteById(*engineHandle, *activeFilterRangeInbound);
+		status = FwpmFilterDeleteById(*engineHandle, *activeFilterRangeInbound);
 		*activeFilterRangeInbound = 0;
 	}
 
 	if (*activeFilterRangeOutbound)
 	{
-		FwpmFilterDeleteById(*engineHandle, *activeFilterRangeOutbound);
+		status = FwpmFilterDeleteById(*engineHandle, *activeFilterRangeOutbound);
 		*activeFilterRangeOutbound = 0;
 	}
 
 	if (*activeFilterLocal)
 	{
-		FwpmFilterDeleteById(*engineHandle, *activeFilterLocal);
+		status = FwpmFilterDeleteById(*engineHandle, *activeFilterLocal);
 		*activeFilterLocal = 0;
 	}
 
@@ -269,7 +267,7 @@ RegisterFilter(
 	status = FwpmTransactionBegin(engineHandle, 0);
 	if (!NT_SUCCESS(status))
 	{
-		REPORT_ERROR(FwpmTransactionBegin, status);
+		REPORT_ERROR(RegisterFilter->FwpmTransactionBegin, status);
 		goto Exit;
 	}
 	transactionStarted = TRUE;

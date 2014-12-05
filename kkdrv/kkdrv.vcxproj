@@ -293,13 +293,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Callout.c" />
-    <ClCompile Include="DriverInit.c" />
+    <ClCompile Include="DriverMain.c" />
     <ClCompile Include="FilteringEngine.c" />
     <ClCompile Include="InjectionEngine.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Callout.h" />
-    <ClInclude Include="DriverInit.h" />
+    <ClInclude Include="DriverMain.h" />
     <ClInclude Include="FilteringEngine.h" />
     <ClInclude Include="InjectionEngine.h" />
   </ItemGroup>

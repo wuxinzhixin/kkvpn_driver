@@ -24,9 +24,6 @@
     </Inf>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DriverInit.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="FilteringEngine.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -36,11 +33,11 @@
     <ClCompile Include="InjectionEngine.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DriverMain.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DriverInit.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="FilteringEngine.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -48,6 +45,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="InjectionEngine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DriverMain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

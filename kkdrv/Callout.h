@@ -1,7 +1,7 @@
 #ifndef _CALLOUT_H_
 #define _CALLOUT_H_
 
-#include "DriverInit.h"
+#include "DriverMain.h"
 #include "UserModeBufferHandler.h"
 
 void NTAPI 

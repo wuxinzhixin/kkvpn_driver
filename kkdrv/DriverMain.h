@@ -1,5 +1,5 @@
-#ifndef _DRIVERINIT_H_
-#define _DRIVERINIT_H_
+#ifndef _DRIVERMAIN_H_
+#define _DRIVERMAIN_H_
 
 #include <ntddk.h>
 #include <wdf.h>
@@ -35,11 +35,12 @@ DEFINE_GUID(GUID_KKDRV_SUBLAYER,
 #define KKDRV_DIRECTION_SEND		1
 
 #define KKDRV_MAX_PACKET_QUEUE_LENGTH 1024
-#define KKDRV_MAX_READ_PACKET_COUNT 512
+#define KKDRV_MAX_READ_PACKET_COUNT 32
 
 #define _DRVNAME "kkVPN: "
 #define _DRVVER "0.1.0"
-#define DOS_DEVICE_NAME  L"\\DosDevices\\kkdrv"
+#define DEVICE_NAME  L"\\Device\\kkdrv"
+#define DOS_DEVICE_NAME  L"\\??\\kkdrv"
 
 #define UM_BUFFER_PAGE_COUNT (16)
 #define UM_BUFFER_PAGE_SIZE (PAGE_SIZE*UM_BUFFER_PAGE_COUNT)
@@ -96,8 +97,11 @@ EVT_WDF_IO_QUEUE_IO_READ kkdrvIoRead;
 EVT_WDF_OBJECT_CONTEXT_CLEANUP kkdrvCleanupCallback;
 EVT_WDF_REQUEST_CANCEL kkdrvRequestCancel;
 
+VOID
+EnginesCleanup();
+
 VOID 
-kkVPNUnload(
+kkdrvUnload(
 	_In_ PDRIVER_OBJECT pDriverObject
 	);
 
@@ -131,4 +135,4 @@ extern UINT64 gActiveFilterLocal;
 extern UINT32 gCalloutID;
 extern KKDRV_QUEUE_DATA gPacketQueue;
 
-#endif // !_DRIVERINIT_H_
+#endif // !_DRIVERMAIN_H_
